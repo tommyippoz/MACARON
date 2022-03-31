@@ -13,7 +13,9 @@ from radiomics import featureextractor
 
 # Download the test case to temporary files and return it's location. If already downloaded, it is not downloaded again,
 # but it's location is still returned.
-imageName, maskName = radiomics.getTestCase('brain1')
+#imageName, maskName = radiomics.getTestCase('brain1')
+imageName = "nrrd/ct.nrrd"
+maskName = "nrrd/mask.nrrd"
 
 if imageName is None or maskName is None:  # Something went wrong, in this case PyRadiomics will also log an error
   print('Error getting testcase!')
@@ -50,9 +52,10 @@ extractor.disableAllFeatures()
 
 # Enable all features in firstorder
 # extractor.enableFeatureClassByName('firstorder')
+extractor.enableAllFeatures()
 
 # Only enable mean and skewness in firstorder
-extractor.enableFeaturesByName(firstorder=['Mean', 'Skewness'])
+#extractor.enableFeaturesByName(firstorder=['Mean', 'Skewness'])
 
 print("Calculating features")
 featureVector = extractor.execute(imageName, maskName)
