@@ -14,8 +14,8 @@ from radiomics import featureextractor
 # Download the test case to temporary files and return it's location. If already downloaded, it is not downloaded again,
 # but it's location is still returned.
 #imageName, maskName = radiomics.getTestCase('brain1')
-imageName = "nrrd/ct.nrrd"
-maskName = "nrrd/mask.nrrd"
+imageName = "debug/tmp/ADAM_ct.nrrd"
+maskName = "debug/tmp/ADAM_mask.nrrd"
 
 if imageName is None or maskName is None:  # Something went wrong, in this case PyRadiomics will also log an error
   print('Error getting testcase!')
@@ -40,6 +40,7 @@ settings = {}
 settings['binWidth'] = 25
 settings['resampledPixelSpacing'] = None  # [3,3,3] is an example for defining resampling (voxels with size 3x3x3mm)
 settings['interpolator'] = sitk.sitkBSpline
+settings['label'] = 23
 
 # Initialize feature extractor
 extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
