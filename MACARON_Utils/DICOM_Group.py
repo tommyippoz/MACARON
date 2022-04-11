@@ -9,7 +9,17 @@ from MACARON_Utils import DICOM_utils
 from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_utils import load_DICOM
-from MACARON_Utils.general_utils import create_CT_NRRD, create_mask_NRRD
+from MACARON_Utils.general_utils import create_CT_NRRD, create_masks_NRRD
+
+import matplotlib.pyplot as plt
+
+from complexity.PyComplexityMetric import (
+    PyComplexityMetric,
+    MeanAreaMetricEstimator,
+    AreaMetricEstimator,
+    ApertureIrregularityMetric)
+
+from complexity.dicomrt import RTPlan
 
 
 class DICOMGroup:
@@ -122,7 +132,7 @@ class DICOMGroup:
             return plan, rt_plan
         else:
             return {}, {}
-
+    """
     def calculate_radiomics(self):
         source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
         mask_nrrd = self.tmp_folder + "/" + self.name + "_mask.nrrd"
@@ -131,8 +141,9 @@ class DICOMGroup:
             create_CT_NRRD(ct_folder=self.folder, nrrd_filename=source_nrrd)
         if not os.path.exists(mask_nrrd):
             print("Need to generate mask NRRD temporary file first")
-            create_mask_NRRD(ct_folder=self.folder, nrrd_filename=mask_nrrd,
-                             rt_struct_filename=self.rts_object.get_file_name())
+            create_masks_NRRD(ct_folder=self.folder, ct_nrrd_filename=mask_nrrd,
+                              rt_struct_filename=self.rts_object.get_file_name(), 
+                              name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
         settings = {'binWidth': 25,
                     'resampledPixelSpacing': None,
                     'interpolator': SimpleITK.sitkBSpline}
@@ -142,6 +153,82 @@ class DICOMGroup:
         extractor.enableAllFeatures()
         self.radiomics = extractor.execute(source_nrrd, mask_nrrd)
         return self.radiomics
+    
+    """
+
+    def calculate_radiomics(self):
+        source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
+        mask_folder = self.tmp_folder + "/" + self.name + "_masks"
+        if not os.path.exists(source_nrrd):
+            print("Need to generate CT NRRD temporary file first")
+            create_CT_NRRD(ct_folder=self.folder, nrrd_filename=source_nrrd)
+        if not os.path.exists(mask_folder):
+            print("Need to generate mask NRRD temporary file first")
+            create_masks_NRRD(tmp_folder=self.tmp_folder, ct_nrrd_filename=source_nrrd,
+                              rt_struct_filename=self.rts_object.get_file_name(),
+                              name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
+        settings = {'binWidth': 25,
+                    'resampledPixelSpacing': None,
+                    'interpolator': SimpleITK.sitkBSpline}
+
+        # Initialize feature extractor
+        extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
+        extractor.enableAllFeatures()
+        for file in os.listdir(mask_folder):
+            mask_nrrd = mask_folder + "/" + file
+            if os.path.isfile(mask_nrrd) and file.endswith(".nrrd"):
+                file = file.replace(".nrrd", "")
+                print("Calculating Radiomic features for '" + self.name + "', structure '" + file + "'")
+                self.radiomics[file] = extractor.execute(source_nrrd, mask_nrrd)
+        return self.radiomics
 
 
+    DEFAULT_RTP_METRICS = [
+        PyComplexityMetric,
+        MeanAreaMetricEstimator,
+        AreaMetricEstimator,
+        ApertureIrregularityMetric]
 
+    RTP_METRICS_UNITS = {
+        PyComplexityMetric: "CI [mm^-1]",
+        MeanAreaMetricEstimator: "mm^2",
+        AreaMetricEstimator: "mm^2",
+        ApertureIrregularityMetric: "dimensionless"}
+
+    def calculate_RTPlan_metrics(self, metrics_list=None, generate_plots=True, output_folder=None):
+        """
+        Calculates Complexity indexes from RTPlan
+        :param output_folder: folder to print plots to
+        :param generate_plots: True if plots have to be generated and saved to file
+        :param metrics_list: the list of metrics to be calculated, initialized as DEFAULT_RTP_METRICS when missing
+        :return: a dictionary containing the metric value and the unit for each RTPlan metric
+        """
+        if (metrics_list is None) or (type(metrics_list) is not list):
+            metrics_list = self.DEFAULT_RTP_METRICS
+
+        rtp_metrics = {}
+        plan_info = RTPlan(filename=self.rtp_object.get_file_name())
+        if plan_info is not None:
+            plan_dict = plan_info.get_plan()
+            for metric in metrics_list:
+                unit = self.RTP_METRICS_UNITS[metric]
+                met_obj = metric()
+                plan_metric = met_obj.CalculateForPlan(None, plan_dict)
+                rtp_metrics[metric.__name__] = [plan_metric, unit]
+                if generate_plots:
+                    for k, beam in plan_dict["beams"].items():
+                        fig, ax = plt.subplots()
+                        cpx_beam_cp = met_obj.CalculateForBeamPerAperture(None, plan_dict, beam)
+                        ax.plot(cpx_beam_cp)
+                        ax.set_xlabel("Control Point")
+                        ax.set_ylabel(f"${unit}$")
+                        txt = f"Patient: {self.name} - {metric.__name__} per control point"
+                        ax.set_title(txt)
+                        if output_folder is not None:
+                            fig.savefig(output_folder + "/" + self.name + "_" + metric.__name__ + ".png",
+                                        dpi=fig.dpi)
+                        else:
+                            fig.savefig(self.name + "_" + metric.__name__ + ".png", dpi=fig.dpi)
+        else:
+            print("Supplied file is not an RT_PLAN")
+        return rtp_metrics

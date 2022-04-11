@@ -42,7 +42,10 @@ if __name__ == "__main__":
                 #plan, rt_plan = dg.get_plan()
 
                 # Calculating radiomic features
-                radiomic_features = dg.calculate_radiomics()
+                #radiomic_features = dg.calculate_radiomics()
+
+                # Calculating RTPlan metrics
+                rtp_metrics = dg.calculate_RTPlan_metrics(output_folder=OUTPUT_FOLDER)
                 print("THE END")
             else:
                 print("File '" + subfolder_path + "' won't be processed as DICOM source: not a directory")
