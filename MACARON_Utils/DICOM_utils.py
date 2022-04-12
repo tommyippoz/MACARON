@@ -184,3 +184,30 @@ def get_plan(rtp_file):
         return plan, rt_plan
     else:
         return {}, {}
+
+
+def build_DVH_info(dvh):
+    dvh_info = {}
+    dvh_info["Structure"] = dvh.name
+    if dvh.volume_units == '%':
+        dvh_info["rel volume"] = dvh.volume
+    else:
+        dvh_info["abs volume"] = dvh.volume
+    dvh_info["type"] = dvh.dvh_type
+    dvh_info["volume unit"] = dvh.volume_units
+    dvh_info["dose unit"] = dvh.dose_units
+    dvh_info["Max Dose"] = dvh.max
+    dvh_info["Min Dose"] = dvh.min
+    dvh_info["Mean Dose"] = dvh.mean
+    dvh_info["D100"] = dvh.D100
+    dvh_info["D98"] = dvh.D98
+    dvh_info["D95"] = dvh.D95
+    if dvh.dose_units == '%':
+        dvh_info["V100"] = dvh.V100
+        dvh_info["V95"] = dvh.V95
+        dvh_info["V5"] = dvh.V5
+    dvh_info["D2cc"] = dvh.D2cc
+    dvh_info["counts"] = ",".join([str(a) for a in dvh.counts])
+    dvh_info["bins"] = ",".join([str(a) for a in dvh.bins])
+    #dvh_info["cumulative"] = dvh.cumulative
+    return dvh_info

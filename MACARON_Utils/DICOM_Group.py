@@ -8,8 +8,9 @@ from radiomics import featureextractor
 from MACARON_Utils import DICOM_utils
 from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
-from MACARON_Utils.DICOM_utils import load_DICOM
-from MACARON_Utils.general_utils import create_CT_NRRD, create_masks_NRRD
+from MACARON_Utils.DICOM_Study import DICOMStudy
+from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info
+from MACARON_Utils.general_utils import create_CT_NRRD, create_masks_NRRD, write_dict, clear_folder
 
 import matplotlib.pyplot as plt
 
@@ -39,8 +40,14 @@ class DICOMGroup:
         self.rtd_object = None
         self.rtp_object = None
         self.tc_sequence = []
-        self.dvhs = {}
-        self.radiomics = {}
+        self.structures = None
+        self.dvhs = None
+        self.radiomics = None
+        self.plan_details = None
+        self.plan_metrics = None
+
+    def get_name(self):
+        return self.name
 
     def load_folder(self):
         """
@@ -63,6 +70,8 @@ class DICOMGroup:
                         print("Unable to decode file '" + dicom_file + "'")
         else:
             print("Folder '" + self.folder + "' does not exist")
+        return (self.rtp_object is not None) and (self.rts_object is not None) \
+               and (self.rtd_object is not None) and (self.tc_sequence is not None)
 
     def get_structures(self):
         """
@@ -70,8 +79,8 @@ class DICOMGroup:
         :return: a dictionary containing structures
         """
         if self.rts_object is not None:
-            structures = DICOM_utils.get_structures(self.rts_object.get_file_name())
-            return structures
+            self.structures = DICOM_utils.get_structures(self.rts_object.get_file_name())
+            return self.structures
         else:
             return {}
 
@@ -103,13 +112,13 @@ class DICOMGroup:
         """
         if os.path.exists(output_folder) and os.path.isdir(output_folder):
             dvh_path = output_folder + "/" + self.name + "_DVH.png"
-            if self.dvhs == {}:
+            if self.dvhs is None:
                 print("Need to generate DVHs first, this may take a while...")
                 self.generate_DVH()
-            structures = self.get_structures()
-            for key, structure in structures.items():
+            if self.structures is None:
+                self.get_structures()
+            for key, structure in self.structures.items():
                 if (key in self.dvhs) and (len(self.dvhs[key].counts) and self.dvhs[key].counts[0] != 0):
-                    a = self.dvhs[key].counts * 100 / self.dvhs[key].counts[0]
                     pylab.plot(self.dvhs[key].counts * 100 / self.dvhs[key].counts[0],
                                color=dvhcalc.np.array(structure['color'], dtype=float) / 255,
                                label=structure['name'],
@@ -128,33 +137,10 @@ class DICOMGroup:
         :return: a dictionary containing the detail of the RT_PLAN, and a supporting string
         """
         if self.rtp_object is not None:
-            plan, rt_plan = DICOM_utils.get_plan(self.rtp_object.get_file_name())
-            return plan, rt_plan
+            self.plan_details, rt_plan = DICOM_utils.get_plan(self.rtp_object.get_file_name())
+            return self.plan_details, rt_plan
         else:
             return {}, {}
-    """
-    def calculate_radiomics(self):
-        source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
-        mask_nrrd = self.tmp_folder + "/" + self.name + "_mask.nrrd"
-        if not os.path.exists(source_nrrd):
-            print("Need to generate CT NRRD temporary file first")
-            create_CT_NRRD(ct_folder=self.folder, nrrd_filename=source_nrrd)
-        if not os.path.exists(mask_nrrd):
-            print("Need to generate mask NRRD temporary file first")
-            create_masks_NRRD(ct_folder=self.folder, ct_nrrd_filename=mask_nrrd,
-                              rt_struct_filename=self.rts_object.get_file_name(), 
-                              name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
-        settings = {'binWidth': 25,
-                    'resampledPixelSpacing': None,
-                    'interpolator': SimpleITK.sitkBSpline}
-
-        # Initialize feature extractor
-        extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
-        extractor.enableAllFeatures()
-        self.radiomics = extractor.execute(source_nrrd, mask_nrrd)
-        return self.radiomics
-    
-    """
 
     def calculate_radiomics(self):
         source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
@@ -174,6 +160,7 @@ class DICOMGroup:
         # Initialize feature extractor
         extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
         extractor.enableAllFeatures()
+        self.radiomics = {}
         for file in os.listdir(mask_folder):
             mask_nrrd = mask_folder + "/" + file
             if os.path.isfile(mask_nrrd) and file.endswith(".nrrd"):
@@ -181,7 +168,6 @@ class DICOMGroup:
                 print("Calculating Radiomic features for '" + self.name + "', structure '" + file + "'")
                 self.radiomics[file] = extractor.execute(source_nrrd, mask_nrrd)
         return self.radiomics
-
 
     DEFAULT_RTP_METRICS = [
         PyComplexityMetric,
@@ -206,7 +192,7 @@ class DICOMGroup:
         if (metrics_list is None) or (type(metrics_list) is not list):
             metrics_list = self.DEFAULT_RTP_METRICS
 
-        rtp_metrics = {}
+        self.plan_metrics = {}
         plan_info = RTPlan(filename=self.rtp_object.get_file_name())
         if plan_info is not None:
             plan_dict = plan_info.get_plan()
@@ -214,7 +200,7 @@ class DICOMGroup:
                 unit = self.RTP_METRICS_UNITS[metric]
                 met_obj = metric()
                 plan_metric = met_obj.CalculateForPlan(None, plan_dict)
-                rtp_metrics[metric.__name__] = [plan_metric, unit]
+                self.plan_metrics[metric.__name__] = [plan_metric, unit]
                 if generate_plots:
                     for k, beam in plan_dict["beams"].items():
                         fig, ax = plt.subplots()
@@ -231,4 +217,58 @@ class DICOMGroup:
                             fig.savefig(self.name + "_" + metric.__name__ + ".png", dpi=fig.dpi)
         else:
             print("Supplied file is not an RT_PLAN")
-        return rtp_metrics
+        return self.plan_metrics
+
+    def report(self, studies, output_folder, clean_folder=True):
+        if os.path.exists(output_folder) and os.path.isdir(output_folder):
+            group_folder = output_folder + "/" + self.name + "/"
+            if os.path.exists(group_folder):
+                if clean_folder:
+                    print("Deleting existing info inside '" + group_folder + "' folder")
+                    clear_folder(group_folder)
+            else:
+                os.makedirs(group_folder)
+            if len(self.tc_sequence) == 0:
+                print("Loading info from DICOM set")
+                self.load_folder()
+            if (studies is not None) and (len(studies) > 0):
+                for study in studies:
+                    if study is DICOMStudy.STRUCTURES:
+                        out_file = group_folder + "structures.csv"
+                        if self.structures is None:
+                            self.get_structures()
+                        write_dict(dict_obj=self.structures, filename=out_file,
+                                   header="structure_id,id,name,type,color,empty")
+                    elif study is DICOMStudy.PLAN_DETAIL:
+                        out_file = group_folder + "plan_detail.csv"
+                        if self.plan_details is None:
+                            self.get_plan()
+                        write_dict(dict_obj=self.plan_details, filename=out_file, header="attribute,value")
+                    elif study is DICOMStudy.PLAN_METRICS_DATA:
+                        out_file = group_folder + "plan_metrics.csv"
+                        if self.plan_metrics is None:
+                            self.calculate_RTPlan_metrics()
+                        write_dict(dict_obj=self.plan_metrics, filename=out_file, header="metric,value,unit")
+                    elif study is DICOMStudy.PLAN_METRICS_IMG:
+                        self.calculate_RTPlan_metrics(output_folder=group_folder)
+                    elif study is DICOMStudy.RADIOMIC_FEATURES:
+                        out_file = group_folder + "radiomic_features.csv"
+                        if self.radiomics is None:
+                            self.calculate_radiomics()
+                        write_dict(dict_obj=self.radiomics, filename=out_file, header="structure,feature,value")
+                    elif study is DICOMStudy.DVH_IMG:
+                        self.print_dvh(output_folder=group_folder)
+                    elif study is DICOMStudy.DVH_DATA:
+                        if self.dvhs is None:
+                            self.generate_DVH()
+                        for dvh_id in self.dvhs.keys():
+                            out_file = group_folder + "dvh_data_structure_" + str(dvh_id) + ".csv"
+                            write_dict(dict_obj=build_DVH_info(self.dvhs[dvh_id]),
+                                       filename=out_file, header="attribute,value")
+                    else:
+                        print("Cannot recognize study '" + study + "' to report about")
+            else:
+                print("No valid studies to report. Please input a list containing DICOMStudy objects")
+        else:
+            print("Folder '" + output_folder + "' does not exist or is not a folder")
+
