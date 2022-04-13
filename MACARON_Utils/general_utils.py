@@ -18,6 +18,29 @@ def clear_folder(folder):
             print('Failed to delete %s. Reason: %s' % (file_path, e))
 
 
+def write_dict(dict_obj, filename, header=None):
+    with open(filename, 'w') as f:
+        if header is not None:
+            f.write("%s\n" % header)
+        for key in dict_obj.keys():
+            if (type(dict_obj[key]) is dict) or issubclass(type(dict_obj[key]), dict):
+                if len(dict_obj[key]) > 10:
+                    for inner in dict_obj[key].keys():
+                        f.write("%s,%s,%s\n" % (key, inner, dict_obj[key][inner]))
+                else:
+                    f.write("%s," % key)
+                    for inner in dict_obj[key].keys():
+                        f.write("%s," % dict_obj[key][inner])
+                    f.write("\n")
+            elif type(dict_obj[key]) is list:
+                f.write("%s," % key)
+                for item in dict_obj[key]:
+                    f.write("%s," % item)
+                f.write("\n")
+            else:
+                f.write("%s,%s\n" % (key, dict_obj[key]))
+
+
 def create_CT_NRRD(ct_folder, nrrd_filename):
     if distutils.spawn.find_executable('plastimatch') is not None:
         call(['plastimatch', 'convert', '--input', ct_folder, '--output-img', nrrd_filename])
