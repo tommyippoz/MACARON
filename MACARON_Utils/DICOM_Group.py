@@ -9,7 +9,7 @@ from MACARON_Utils import DICOM_utils
 from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_Study import DICOMStudy
-from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info
+from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info, extractPatientData
 from MACARON_Utils.general_utils import create_CT_NRRD, create_masks_NRRD, write_dict, clear_folder
 
 import matplotlib.pyplot as plt
@@ -83,6 +83,18 @@ class DICOMGroup:
             return self.structures
         else:
             return {}
+
+    def get_patient_info(self):
+        """
+        Extracts patient data from DICOM Group
+        """
+        return extractPatientData(self.rtp_object.get_object())
+
+    def get_dose_info(self):
+        """
+        Extracts dose data from DICOM Group
+        """
+        return DICOM_utils.extractDoseData(self.rtd_object.get_object())
 
     def generate_DVH(self):
         """

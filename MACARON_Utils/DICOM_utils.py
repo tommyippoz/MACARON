@@ -53,7 +53,6 @@ def extractDoseData(dicom_ob):
                  "SumType": dicom_ob.DoseSummationType,
                  "Type": dicom_ob.DoseType,
                  "Units": dicom_ob.DoseUnits,
-                 "RTPlanSequence": dicom_ob.ReferencedRTPlanSequence,
                  "RTPlanSequence": dicom_ob.ReferencedRTPlanSequence}
     return dose_data
 
