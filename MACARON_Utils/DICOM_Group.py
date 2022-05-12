@@ -10,7 +10,7 @@ from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info, extractPatientData
-from MACARON_Utils.general_utils import create_CT_NRRD, create_masks_NRRD, write_dict, clear_folder
+from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD
 
 import matplotlib.pyplot as plt
 
@@ -150,6 +150,14 @@ class DICOMGroup:
         """
         if self.rtp_object is not None:
             self.plan_details, rt_plan = DICOM_utils.get_plan(self.rtp_object.get_file_name())
+            if len(self.plan_details["date"]) == 0:
+                self.plan_details["date"] = self.rtp_object.get_object().InstanceCreationDate
+            if len(self.plan_details["time"]) == 0:
+                self.plan_details["time"] = self.rtp_object.get_object().InstanceCreationTime
+            if len(self.plan_details["label"]) == 0:
+                self.plan_details["label"] = self.rtp_object.get_object().RTPlanLabel
+            if len(self.plan_details["name"]) == 0:
+                self.plan_details["name"] = self.rtp_object.get_object().RTPlanName
             return self.plan_details, rt_plan
         else:
             return {}, {}

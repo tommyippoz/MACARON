@@ -3,9 +3,29 @@
 								    CREATE DATABASE
 --------------------------------------------------------------------------------------------------
 */
-drop database if exists macaron;
-create database macaron;
+create database if not exists macaron;
 use macaron;
+
+/*
+--------------------------------------------------------------------------------------------------
+								CLEARING TABLES
+--------------------------------------------------------------------------------------------------
+*/
+
+drop table if exists GroupPlanMetric;
+drop table if exists PlanMetric;
+drop table if exists DVHDetail;
+drop table if exists DVH;
+drop table if exists StructureFeature;
+drop table if exists RadiomicFeature;
+drop table if exists FeatureCategory;
+drop table if exists GroupStructure;
+drop table if exists DicomGroup;
+drop table if exists Structure;
+drop table if exists RTDose;
+drop table if exists RTPlan;
+drop table if exists Patient;
+
 
 /*
 --------------------------------------------------------------------------------------------------
@@ -332,6 +352,7 @@ insert into RadiomicFeature (feature_name, feature_category, feature_type) value
 DELIMITER //
 
 /* Procedure to add a new patient, returnd the patient_id */
+DROP PROCEDURE IF EXISTS add_patient_full //
 CREATE PROCEDURE add_patient_full (
 	IN detail VARCHAR(200),
 	IN sex char(1),
@@ -345,6 +366,7 @@ BEGIN
 END //
 
 /* Procedure to add a new patient, returnd the patient_id */
+DROP PROCEDURE IF EXISTS add_patient //
 CREATE PROCEDURE add_patient (
 	IN detail VARCHAR(200),
     OUT newID int unsigned)
@@ -355,6 +377,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rtp, returns the rtp_id */
+DROP PROCEDURE IF EXISTS add_rtp_full //
 CREATE PROCEDURE add_rtp_full (
 	IN label VARCHAR(200),
 	IN p_date date,
@@ -370,6 +393,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rtp, returns the rtp_id */
+DROP PROCEDURE IF EXISTS add_rtp //
 CREATE PROCEDURE add_rtp (
 	IN label VARCHAR(200),
 	IN p_date date,
@@ -383,6 +407,7 @@ BEGIN
 END //
 
 /* Procedure to add a new structure, returns the structure_id */
+DROP PROCEDURE IF EXISTS add_structure_full //
 CREATE PROCEDURE add_structure_full (
 	IN str_index int unsigned,
 	IN str_name VARCHAR(200),
@@ -399,6 +424,7 @@ BEGIN
 END //
 
 /* Procedure to add a new structure, returns the structure_id */
+DROP PROCEDURE IF EXISTS add_structure //
 CREATE PROCEDURE add_structure (
 	IN str_index int unsigned,
 	IN str_name VARCHAR(200),
@@ -410,6 +436,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rt_dose, returns the rtd_id */
+DROP PROCEDURE IF EXISTS add_rtd_full //
 CREATE PROCEDURE add_rtd_full (
 	IN d_scaling float,
     IN d_sum char(20),
@@ -423,6 +450,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rt_dose, returns the rtd_id */
+DROP PROCEDURE IF EXISTS add_rtd //
 CREATE PROCEDURE add_rtd (
 	IN d_scaling float,
     OUT newID int unsigned)
@@ -433,6 +461,7 @@ BEGIN
 END //
 
 /* Procedure to add a new group, returns the group_id */
+DROP PROCEDURE IF EXISTS add_group_from_ids //
 CREATE PROCEDURE add_group_from_ids (
 	IN g_name VARCHAR(200),
     IN rtplan int unsigned,
@@ -446,6 +475,7 @@ BEGIN
 END //
 
 /* Procedure to add a new group, returns the group_id */
+DROP PROCEDURE IF EXISTS add_group //
 CREATE PROCEDURE add_group (
 	IN pat_detail VARCHAR(200),
 	IN g_name VARCHAR(200),
@@ -465,6 +495,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rt_dose, returns the rtd_id */
+DROP PROCEDURE IF EXISTS add_group_structure //
 CREATE PROCEDURE add_group_structure(
 	IN g_id int unsigned,
     IN s_id int unsigned,
@@ -476,6 +507,7 @@ BEGIN
 END //
 
 /* Procedure to add the value of a radiomic feature for a given group, returns the structure_feature_id */
+DROP PROCEDURE IF EXISTS add_radiomic_feature //
 CREATE PROCEDURE add_radiomic_feature(
 	IN gs_id int unsigned,
     IN f_name varchar(200),
@@ -494,6 +526,7 @@ BEGIN
 END //
 
 /* Procedure to add a new rt_dose, returns the rtd_id */
+DROP PROCEDURE IF EXISTS add_plan_metric_value //
 CREATE PROCEDURE add_plan_metric_value(
 	IN g_id int unsigned,
     IN m_name varchar(100),
@@ -512,11 +545,10 @@ BEGIN
 	SET newID = last_insert_id();
 END //
 
-
-
 /* Getters Procedures */
 
 /* Procedure to get a structure_id */
+DROP PROCEDURE IF EXISTS get_structure_id //
 CREATE PROCEDURE get_structure_id(
 	IN g_id int unsigned,
     IN s_name varchar(200),
@@ -528,17 +560,38 @@ BEGIN
     INTO ID;
 END //
 
-
-
-
-
 DELIMITER ;
+
+/*
+--------------------------------------------------------------------------------------------------
+								            VIEWS
+--------------------------------------------------------------------------------------------------
+*/
+
+drop view if exists seeRadiomicFeatures;
+CREATE VIEW seeRadiomicFeatures AS 
+	SELECT group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type", feature_name as "Feature Name", 
+		category_name as "Feature Category", feature_value as "Value" 
+    from ((((StructureFeature join RadiomicFeature using (feature_id)) 
+		inner join FeatureCategory on RadiomicFeature.feature_category = FeatureCategory.category_id)
+        join GroupStructure using(group_structure_id))
+        join DicomGroup using(group_id))
+        join Structure using(structure_id);
 
 use macaron;
 
-call add_plan_metric_value(1, "PyComplexityMetric", 0.2, @res);
-select @res;
+SELECT group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type", feature_name as "Feature Name", 
+		category_name as "Feature Category", feature_value as "Value" 
+    from ((((StructureFeature join RadiomicFeature using (feature_id)) 
+		inner join FeatureCategory on RadiomicFeature.feature_category = FeatureCategory.category_id)
+        join GroupStructure using(group_structure_id))
+        join DicomGroup using(group_id))
+        join Structure using(structure_id) limit 2000;
 
-select * from structure;
+select * from seeRadiomicFeatures;
 
-select * from StructureFeature;
+SELECT * from StructureFeature join RadiomicFeature using (feature_id);
+
+select * from structureFeature limit 2000;
+
+select * from Structure;

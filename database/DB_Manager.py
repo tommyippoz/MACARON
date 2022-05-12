@@ -156,7 +156,7 @@ def store_dicom_group(dg, username, password):
     rtd_id = store_dose(db, dg)
     group_id = store_group(db, dg, rtp_id, rtd_id, patient_id)
     gs_ids = store_group_structure(db, group_id, structures_id)
-    #radiomic_ids = store_radiomics(db, dg, group_id)
+    radiomic_ids = store_radiomics(db, dg, group_id)
     pm_ids = store_plan_metric(db, dg, group_id)
 
 

@@ -15,7 +15,7 @@ def load_DICOM(file_path, sanitize=True):
     if sanitize and ("TransferSyntaxUID" not in dicom_ob.file_meta):
         sanitize_DICOM(file_path)
         dicom_ob = pydicom.read_file(file_path, force=True)
-    dicom_type = get_DICOM_type(dicom_ob)
+    dicom_type = get_DICOM_type_from_object(dicom_ob)
     return dicom_ob, dicom_type
 
 
@@ -128,7 +128,7 @@ def get_DICOM_type(dicom_ob):
     return DICOMType.OTHER
 
 
-def get_DICOM_type_from_ID(dicom_ob):
+def get_DICOM_type_from_object(dicom_ob):
     """
     Determines the DICOMType of the FileDataset using its SOPClassUID.
     :param dicom_ob: the FileDataset object
@@ -150,7 +150,7 @@ def get_DICOM_type_from_ID(uid):
         return DICOMType.RT_STRUCT
     elif uid == '1.2.840.10008.5.1.4.1.1.481.5':
         return DICOMType.RT_PLAN
-    elif uid == '1.2.840.10008.5.1.4.1.1.2':
+    elif uid == '1.2.840.10008.5.1.4.1.1.2' or uid == '1.2.840.10008.5.1.4.1.1.4':
         return DICOMType.TC
     else:
         return None

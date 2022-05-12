@@ -5,7 +5,6 @@ import numpy
 import SimpleITK
 from subprocess import call
 
-
 def clear_folder(folder):
     for filename in os.listdir(folder):
         file_path = os.path.join(folder, filename)
