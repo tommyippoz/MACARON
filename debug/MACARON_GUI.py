@@ -1,3 +1,4 @@
+import configparser
 import os
 import tkinter
 import tkinter.font
@@ -12,10 +13,38 @@ from PIL import Image, ImageTk
 from MACARON_Utils.DICOM_Group import DICOMGroup
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.general_utils import clear_folder
+from database import DB_Manager
+from database.DB_Manager import connect, store_group, store_patient, create_patient
 
 TMP_FOLDER = "tmp"
 
 OUT_FOLDER = "output"
+
+
+def find_DICOM_groups(main_folder, tmp_folder):
+    """
+    Returns an array of dicom groups in the main folder
+    @param main_folder: root folder
+    @return: array of dicom groups
+    """
+
+    groups = []
+    rec_find_DICOM_groups(main_folder, tmp_folder, groups)
+    return groups
+
+
+def rec_find_DICOM_groups(main_folder, tmp_folder, groups):
+    dg = DICOMGroup(dicom_folder=main_folder,
+                    group_name=main_folder.split('/')[-1] if "/" in main_folder else main_folder,
+                    tmp_folder=tmp_folder)
+    if dg.load_folder() is True:
+        print("Found Patient #" + str(len(groups) + 1) + ": " + dg.get_name())
+        groups.append(dg)
+    for subfolder_name in os.listdir(main_folder):
+        subfolder_path = main_folder + "/" + subfolder_name
+        if os.path.isdir(subfolder_path):
+            rec_find_DICOM_groups(subfolder_path, tmp_folder, groups)
+    return groups
 
 
 def check_folder(dicom_folder):
@@ -39,7 +68,7 @@ def check_folder(dicom_folder):
 class MacaronGUI(tkinter.Frame):
 
     @classmethod
-    def main(cls):
+    def main(cls, config):
         root = Tk()
         root.title('MACARON GUI')
         root.iconbitmap('../resources/MACARON_nobackground.ico')
@@ -47,11 +76,11 @@ class MacaronGUI(tkinter.Frame):
         root.resizable(False, False)
         default_font = tkinter.font.nametofont("TkDefaultFont")
         default_font.configure(size=11)
-        cls(root)
+        cls(root, config)
         root.eval('tk::PlaceWindow . center')
         root.mainloop()
 
-    def __init__(self, root):
+    def __init__(self, root, config):
         super().__init__(root)
         self.checkboxes = [
             ["Structures", BooleanVar(value=True), DICOMStudy.STRUCTURES],
@@ -61,6 +90,7 @@ class MacaronGUI(tkinter.Frame):
             ["Plan", BooleanVar(value=True), DICOMStudy.PLAN_DETAIL],
             ["Plan Metrics Data", BooleanVar(value=True), DICOMStudy.PLAN_METRICS_DATA],
             ["Plan Metrics Plots", BooleanVar(value=True), DICOMStudy.PLAN_METRICS_IMG]]
+
         # Frame Init
         self.root = root
         self.header = Frame(root, bg="white")
@@ -70,6 +100,14 @@ class MacaronGUI(tkinter.Frame):
         self.group_label = None
         self.run_button = None
         self.patients = []
+
+        self.store_data = None
+        self.create_data = None
+        self.clean_db = None
+        self.clean_data = None
+
+        self.db_user =  config["database"]["username"]
+        self.db_psw = config["database"]["password"]
 
         # Build UI
         self.build_ui()
@@ -111,16 +149,39 @@ class MacaronGUI(tkinter.Frame):
         label.image = photo
         label.grid(column=1, row=1, rowspan=len(checkboxes), padx=10, pady=5)
 
+        folder_lbl = Label(self.content, text="MACARON Output:", font='Helvetica 12 bold', bg="white")
+        folder_lbl.grid(column=0, row=len(checkboxes)+1, columnspan=2, padx=10, pady=10)
+
+        self.store_data = BooleanVar(value=True)
+        db_cb = Checkbutton(self.content, text="Store Results in Database",
+                                 variable=self.store_data, onvalue=True, bg="white")
+        db_cb.grid(column=0, row=len(checkboxes)+2, padx=10, pady=10)
+
+        self.clean_db = BooleanVar(value=False)
+        db_clean_cb = Checkbutton(self.content, text="Clean Database",
+                            variable=self.clean_db, onvalue=True, bg="white")
+        db_clean_cb.grid(column=1, row=len(checkboxes) + 2, padx=10, pady=10)
+
+        self.create_data = BooleanVar(value=True)
+        db_cb = Checkbutton(self.content, text="File Output",
+                            variable=self.create_data, onvalue=True, bg="white")
+        db_cb.grid(column=0, row=len(checkboxes) + 3, padx=10, pady=10)
+
+        self.clean_data = BooleanVar(value=False)
+        data_clean_cb = Checkbutton(self.content, text="Clean Files",
+                            variable=self.clean_data, onvalue=True, bg="white")
+        data_clean_cb.grid(column=1, row=len(checkboxes) + 3, padx=10, pady=10)
+
         self.run_button = Button(self.content, text="Load DICOM Folder to Run Analysis", bg="white",
                                  command=self.run_analysis, state=DISABLED)
-        self.run_button.grid(column=0, row=len(checkboxes)+1, columnspan=2, padx=10, pady=10)
+        self.run_button.grid(column=0, row=len(checkboxes)+4, columnspan=2, padx=10, pady=10)
 
 
     def select_folder(self):
         folder = askdirectory(initialdir="./")
         if folder is not None:
             self.dicom_folder = folder
-            patients = check_folder(self.dicom_folder)
+            patients = find_DICOM_groups(self.dicom_folder, TMP_FOLDER)
             if patients is not None:
                 self.patients = patients
                 self.group_label['text'] = str(len(patients))
@@ -139,7 +200,7 @@ class MacaronGUI(tkinter.Frame):
 
         progress_var = DoubleVar()
         progress_bar = ttk.Progressbar(popup, variable=progress_var, maximum=100)
-        progress_bar.grid(row=1, column=0)  # .pack(fill=tk.X, expand=1, side=tk.BOTTOM)
+        progress_bar.grid(row=1, column=0)
         info_label = Label(popup, text="---")
         info_label.grid(row=2, column=0)
 
@@ -156,14 +217,29 @@ class MacaronGUI(tkinter.Frame):
         progress = 0
 
         # Analysis Loop
-        clean_folder = True
+        if self.clean_data is True:
+            clean_folder = True
+        else:
+            clean_folder = False
+        if self.store_data.get() is True:
+            db_conn = connect(self.db_user, self.db_psw)
+            if self.clean_db is True:
+                DB_Manager.clean_db(db_conn)
+                print("Dataset was cleared")
         for patient in self.patients:
             study_index = 1
+            if self.store_data.get() is True:
+                patient_id = create_patient(db_conn, patient)
             for [name, study] in studies:
                 popup.update()
                 info_label['text'] = "Processing '" + patient.get_name() + "' for study " + \
                                      name + "' [" + str(study_index) + "/" + str(len(studies)) + "]"
-                patient.report(studies=[study], output_folder="output", clean_folder=clean_folder)
+                if self.store_data.get() is True:
+                    DB_Manager.store(study, patient, db_conn, patient_id, OUT_FOLDER)
+                    print("Results of '" + str(study) + "' for patient '" + patient.get_name() + "' were computed and stored in the DB")
+                if self.create_data.get() is True:
+                    patient.report(studies=[study], output_folder="output", clean_folder=clean_folder)
+                    print("Results of '" + str(study) + "' for patient '" + patient.get_name() + "' were computed and stored as TXT/CSV files or Images")
                 progress += progress_step
                 progress_var.set(progress)
                 clean_folder = False
@@ -175,6 +251,11 @@ class MacaronGUI(tkinter.Frame):
 
 
 if __name__ == "__main__":
+
+    # Load configuration parameters
+    config = configparser.ConfigParser()
+    config.read('../macaron.config')
+
     # Checking and clearing TMP_FOLDER
     if not os.path.exists(TMP_FOLDER):
         os.makedirs(TMP_FOLDER)
@@ -187,4 +268,4 @@ if __name__ == "__main__":
     else:
         clear_folder(OUT_FOLDER)
 
-    MacaronGUI.main()
+    MacaronGUI.main(config)

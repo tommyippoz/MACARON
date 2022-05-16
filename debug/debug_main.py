@@ -57,7 +57,7 @@ if __name__ == "__main__":
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
 
         for group in groups:
-            DB_Manager.store_dicom_group(group, config["database"]["username"], config["database"]["password"])
+            DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
             # #
             # # # Getting structures for the patient
             # structures = dg.get_structures()
@@ -65,7 +65,7 @@ if __name__ == "__main__":
             # plan, rt_plan = dg.get_plan()
             # #
             # # Generate DVH
-            # dg.generate_DVH()
+            # dvhs, figure_dvh =  group.generate_DVH()
             # # # Calculating radiomic features
             # # radiomic_features = dg.calculate_radiomics()
             # #

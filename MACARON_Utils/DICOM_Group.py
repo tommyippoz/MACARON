@@ -140,8 +140,10 @@ class DICOMGroup:
             pylab.legend(loc=7, borderaxespad=-5)
             pylab.setp(pylab.gca().get_legend().get_texts(), fontsize='x-small')
             pylab.savefig(dvh_path, dpi=75)
+            return dvh_path
         else:
             print("'" + output_folder + "' is not a valid destination folder")
+            return ""
 
     def get_plan(self):
         """
@@ -213,6 +215,7 @@ class DICOMGroup:
             metrics_list = self.DEFAULT_RTP_METRICS
 
         self.plan_metrics = {}
+        img_paths = {}
         plan_info = RTPlan(filename=self.rtp_object.get_file_name())
         if plan_info is not None:
             plan_dict = plan_info.get_plan()
@@ -231,13 +234,14 @@ class DICOMGroup:
                         txt = f"Patient: {self.name} - {metric.__name__} per control point"
                         ax.set_title(txt)
                         if output_folder is not None:
-                            fig.savefig(output_folder + "/" + self.name + "_" + metric.__name__ + ".png",
-                                        dpi=fig.dpi)
+                            img_path = output_folder + "/" + self.name + "_" + metric.__name__ + ".png"
                         else:
-                            fig.savefig(self.name + "_" + metric.__name__ + ".png", dpi=fig.dpi)
+                            img_path = self.name + "_" + metric.__name__ + ".png"
+                        fig.savefig(img_path, dpi=fig.dpi)
+                        img_paths[metric.__name__] = img_path
         else:
             print("Supplied file is not an RT_PLAN")
-        return self.plan_metrics
+        return self.plan_metrics, img_paths
 
     def report(self, studies, output_folder, clean_folder=True):
         if os.path.exists(output_folder) and os.path.isdir(output_folder):
