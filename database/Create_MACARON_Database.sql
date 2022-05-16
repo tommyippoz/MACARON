@@ -121,9 +121,8 @@ create table StructureFeature (
 
 create table DVH (
 	dvh_id int unsigned auto_increment,
-    structure_id int unsigned not null,
-    rtd_id int unsigned not null,
-    image_path varchar(200) not null default "./",
+    group_structure_id int unsigned not null,
+    image_path varchar(1024) not null default "./",
     abs_volume int default 0,
     diagram_type enum("cumulative", "relative") default "cumulative",
     volume_unit char(10) default "cm3",
@@ -136,8 +135,7 @@ create table DVH (
     D95 float default 0,
     D2cc float default 0,
     primary key (dvh_id),
-    foreign key (structure_id) references Structure(structure_id),
-    foreign key (rtd_id) references RTDose(rtd_id)
+    foreign key (group_structure_id) references Structure(structure_id)
 );
 
 create table DVHDetail (
@@ -161,6 +159,7 @@ create table GroupPlanMetric (
     group_id int unsigned not null,
     plan_metric_id int unsigned not null,
     plan_metric_value float not null,
+    plan_metric_img varchar(1024) not null,
     primary key (group_plan_metric_id),
     foreign key (group_id) references DicomGroup(group_id),
     foreign key (plan_metric_id) references PlanMetric(plan_metric_id)
@@ -174,174 +173,181 @@ create table GroupPlanMetric (
 --------------------------------------------------------------------------------------------------
 */
 
-insert into FeatureCategory (category_name) values 
-	("diagnostics"), 
-	("shape"), 
-    ("firstorder"), 
-    ("glcm"),
-    ("gldm"),
-    ("glrlm"),
-    ("glszm"),
-    ("ngtdm");
+DELIMITER //
 
-insert into PlanMetric (metric_name, metric_unit) values
-	("PyComplexityMetric", "CI [mm^-1]"),
-    ("MeanAreaMetricEstimator", "mm^2"),
-    ("AreaMetricEstimator", "mm^2"),
-    ("ApertureIrregularityMetric", "dimensionless");
-    
-/* Diagnostic Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("diagnostics_Versions_PyRadiomics", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Versions_Numpy", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Versions_SimpleITK", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Versions_PyWavelet", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Versions_Python", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Configuration_Settings", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Configuration_EnabledImageTypes", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Image-original_Hash", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Image-original_Dimensionality", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Image-original_Spacing", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Image-original_Size", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Image-original_Mean", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Image-original_Minimum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Image-original_Maximum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_Hash", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Mask-original_Spacing", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_Size", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_BoundingBox", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
-	("diagnostics_Mask-original_VoxelNum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_VolumeNum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_CenterOfMassIndex", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
-	("diagnostics_Mask-original_CenterOfMass", (select category_id from FeatureCategory where category_name = "diagnostics"), "float");
+DROP PROCEDURE IF EXISTS populate_db //
+CREATE PROCEDURE populate_db()
+BEGIN
+	insert into FeatureCategory (category_name) values 
+		("diagnostics"), 
+		("shape"), 
+		("firstorder"), 
+		("glcm"),
+		("gldm"),
+		("glrlm"),
+		("glszm"),
+		("ngtdm");
 
-/* Shape Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_shape_Elongation", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Flatness", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_LeastAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_MajorAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Maximum2DDiameterColumn", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Maximum2DDiameterRow", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Maximum2DDiameterSlice", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Maximum3DDiameter", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_MeshVolume", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_MinorAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_Sphericity", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_SurfaceArea", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_SurfaceVolumeRatio", (select category_id from FeatureCategory where category_name = "shape"), "float"),
-	("original_shape_VoxelVolume", (select category_id from FeatureCategory where category_name = "shape"), "float");
-    
-/* FirstOrder Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_firstorder_10Percentile", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_90Percentile", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Energy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Entropy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_InterquartileRange", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Kurtosis", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Maximum", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_MeanAbsoluteDeviation", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Mean", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Median", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Minimum", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Range", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_RobustMeanAbsoluteDeviation", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_RootMeanSquared", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Skewness", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_TotalEnergy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Uniformity", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
-	("original_firstorder_Variance", (select category_id from FeatureCategory where category_name = "firstorder"), "float");
+	insert into PlanMetric (metric_name, metric_unit) values
+		("PyComplexityMetric", "CI [mm^-1]"),
+		("MeanAreaMetricEstimator", "mm^2"),
+		("AreaMetricEstimator", "mm^2"),
+		("ApertureIrregularityMetric", "dimensionless");
+		
+	/* Diagnostic Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("diagnostics_Versions_PyRadiomics", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Versions_Numpy", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Versions_SimpleITK", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Versions_PyWavelet", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Versions_Python", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Configuration_Settings", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Configuration_EnabledImageTypes", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Image-original_Hash", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Image-original_Dimensionality", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Image-original_Spacing", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Image-original_Size", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Image-original_Mean", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Image-original_Minimum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Image-original_Maximum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_Hash", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Mask-original_Spacing", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_Size", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_BoundingBox", (select category_id from FeatureCategory where category_name = "diagnostics"), "string"),
+		("diagnostics_Mask-original_VoxelNum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_VolumeNum", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_CenterOfMassIndex", (select category_id from FeatureCategory where category_name = "diagnostics"), "float"),
+		("diagnostics_Mask-original_CenterOfMass", (select category_id from FeatureCategory where category_name = "diagnostics"), "float");
 
-/* glcm Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_glcm_Autocorrelation", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_ClusterProminence", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_ClusterShade", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_ClusterTendency", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Contrast", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Correlation", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_DifferenceAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_DifferenceEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_DifferenceVariance", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Id", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Idm", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Idmn", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Idn", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Imc1", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_Imc2", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_InverseVariance", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_JointAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_JointEnergy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_JointEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_MCC", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_MaximumProbability", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_SumAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_SumEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
-	("original_glcm_SumSquares", (select category_id from FeatureCategory where category_name = "glcm"), "float");
+	/* Shape Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_shape_Elongation", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Flatness", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_LeastAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_MajorAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Maximum2DDiameterColumn", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Maximum2DDiameterRow", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Maximum2DDiameterSlice", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Maximum3DDiameter", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_MeshVolume", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_MinorAxisLength", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_Sphericity", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_SurfaceArea", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_SurfaceVolumeRatio", (select category_id from FeatureCategory where category_name = "shape"), "float"),
+		("original_shape_VoxelVolume", (select category_id from FeatureCategory where category_name = "shape"), "float");
+		
+	/* FirstOrder Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_firstorder_10Percentile", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_90Percentile", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Energy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Entropy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_InterquartileRange", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Kurtosis", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Maximum", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_MeanAbsoluteDeviation", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Mean", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Median", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Minimum", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Range", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_RobustMeanAbsoluteDeviation", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_RootMeanSquared", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Skewness", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_TotalEnergy", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Uniformity", (select category_id from FeatureCategory where category_name = "firstorder"), "float"),
+		("original_firstorder_Variance", (select category_id from FeatureCategory where category_name = "firstorder"), "float");
 
-/* gldm Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_gldm_DependenceEntropy", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_DependenceNonUniformity", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_DependenceNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_DependenceVariance", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_HighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_LargeDependenceEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_LargeDependenceHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_LargeDependenceLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_LowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_SmallDependenceEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_SmallDependenceHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
-	("original_gldm_SmallDependenceLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float");
+	/* glcm Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_glcm_Autocorrelation", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_ClusterProminence", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_ClusterShade", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_ClusterTendency", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Contrast", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Correlation", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_DifferenceAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_DifferenceEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_DifferenceVariance", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Id", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Idm", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Idmn", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Idn", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Imc1", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_Imc2", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_InverseVariance", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_JointAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_JointEnergy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_JointEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_MCC", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_MaximumProbability", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_SumAverage", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_SumEntropy", (select category_id from FeatureCategory where category_name = "glcm"), "float"),
+		("original_glcm_SumSquares", (select category_id from FeatureCategory where category_name = "glcm"), "float");
 
-/* glrlm Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_glrlm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_GrayLevelNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_HighGrayLevelRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_LongRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_LongRunHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_LongRunLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_LowGrayLevelRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_RunEntropy", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_RunLengthNonUniformity", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_RunLengthNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_RunPercentage", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_RunVariance", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_ShortRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_ShortRunHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
-	("original_glrlm_ShortRunLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float");
+	/* gldm Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_gldm_DependenceEntropy", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_DependenceNonUniformity", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_DependenceNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_DependenceVariance", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_HighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_LargeDependenceEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_LargeDependenceHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_LargeDependenceLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_LowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_SmallDependenceEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_SmallDependenceHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float"),
+		("original_gldm_SmallDependenceLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "gldm"), "float");
 
-/* glszm Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_glszm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_GrayLevelNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_HighGrayLevelZoneEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_LargeAreaEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_LargeAreaHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_LargeAreaLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_LowGrayLevelZoneEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_SizeZoneNonUniformity", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_SizeZoneNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_SmallAreaEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_SmallAreaHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_SmallAreaLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_ZoneEntropy", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_ZonePercentage", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
-	("original_glszm_ZoneVariance", (select category_id from FeatureCategory where category_name = "glszm"), "float");
+	/* glrlm Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_glrlm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_GrayLevelNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_HighGrayLevelRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_LongRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_LongRunHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_LongRunLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_LowGrayLevelRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_RunEntropy", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_RunLengthNonUniformity", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_RunLengthNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_RunPercentage", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_RunVariance", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_ShortRunEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_ShortRunHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float"),
+		("original_glrlm_ShortRunLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glrlm"), "float");
 
-/* ngtdm Features */
-insert into RadiomicFeature (feature_name, feature_category, feature_type) values
-	("original_ngtdm_Busyness", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
-	("original_ngtdm_Coarseness", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
-	("original_ngtdm_Complexity", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
-	("original_ngtdm_Contrast", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
-	("original_ngtdm_Strength", (select category_id from FeatureCategory where category_name = "ngtdm"), "float");
+	/* glszm Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_glszm_GrayLevelNonUniformity", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_GrayLevelNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_GrayLevelVariance", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_HighGrayLevelZoneEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_LargeAreaEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_LargeAreaHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_LargeAreaLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_LowGrayLevelZoneEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_SizeZoneNonUniformity", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_SizeZoneNonUniformityNormalized", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_SmallAreaEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_SmallAreaHighGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_SmallAreaLowGrayLevelEmphasis", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_ZoneEntropy", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_ZonePercentage", (select category_id from FeatureCategory where category_name = "glszm"), "float"),
+		("original_glszm_ZoneVariance", (select category_id from FeatureCategory where category_name = "glszm"), "float");
+
+	/* ngtdm Features */
+	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
+		("original_ngtdm_Busyness", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
+		("original_ngtdm_Coarseness", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
+		("original_ngtdm_Complexity", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
+		("original_ngtdm_Contrast", (select category_id from FeatureCategory where category_name = "ngtdm"), "float"),
+		("original_ngtdm_Strength", (select category_id from FeatureCategory where category_name = "ngtdm"), "float");
+		
+END //
     
 /*
 --------------------------------------------------------------------------------------------------
@@ -349,7 +355,6 @@ insert into RadiomicFeature (feature_name, feature_category, feature_type) value
 --------------------------------------------------------------------------------------------------
 */
 
-DELIMITER //
 
 /* Procedure to add a new patient, returnd the patient_id */
 DROP PROCEDURE IF EXISTS add_patient_full //
@@ -531,6 +536,7 @@ CREATE PROCEDURE add_plan_metric_value(
 	IN g_id int unsigned,
     IN m_name varchar(100),
     IN pm_value float,
+    IN pm_img varchar(1024),
     OUT newID int unsigned)
 BEGIN
 	DECLARE m_id int unsigned;
@@ -540,10 +546,50 @@ BEGIN
     WHERE metric_name = m_name
     INTO m_id;
 
-	INSERT INTO GroupPlanMetric(group_id, plan_metric_id, plan_metric_value)
-		VALUES (g_id, m_id, pm_value);
+	INSERT INTO GroupPlanMetric(group_id, plan_metric_id, plan_metric_value, plan_metric_img)
+		VALUES (g_id, m_id, pm_value, pm_img);
 	SET newID = last_insert_id();
 END //
+
+/* Procedure to add a new dvh, returns the dvh_id */
+DROP PROCEDURE IF EXISTS add_dvh //
+CREATE PROCEDURE add_dvh(
+	IN gs_id int unsigned,
+    IN p_image_path varchar(1024),
+    IN p_abs_volume int,
+    IN p_diagram_type enum("cumulative", "relative"),
+    IN p_volume_unit char(10),
+    IN p_dose_unit char(10),
+    IN p_max_dose int,
+    IN p_min_dose int,
+    IN p_mean_dose float,
+    IN p_D100 float,
+    IN p_D98 float,
+    IN p_D95 float,
+    IN p_D2cc float,
+    OUT newID int unsigned)
+BEGIN
+	INSERT INTO DVH(group_structure_id, image_path, abs_volume, diagram_type, volume_unit, dose_unit, max_dose, 
+						min_dose, mean_dose, D100, D98, D95, D2cc)
+		VALUES (gs_id, p_image_path, p_abs_volume, p_diagram_type, p_volume_unit, p_dose_unit, p_max_dose, p_min_dose, 
+					p_mean_dose, p_D100, p_D98, p_D95, p_D2cc);
+	SET newID = last_insert_id();
+END //
+
+/* Procedure to add a new dvh detail, returns the dvh_detail_id */
+DROP PROCEDURE IF EXISTS add_dvh_detail //
+CREATE PROCEDURE add_dvh_detail(
+	IN d_id int unsigned,
+    IN count float,
+    IN bin float,
+    OUT newID int unsigned)
+BEGIN
+	INSERT INTO DVHDetail(dvh_id, counts, bins)
+		VALUES (d_id, count, bin);
+	SET newID = last_insert_id();
+END //
+
+
 
 /* Getters Procedures */
 
@@ -560,7 +606,107 @@ BEGIN
     INTO ID;
 END //
 
+/* Procedure to get a structure_id */
+DROP PROCEDURE IF EXISTS get_structure_from_name //
+CREATE PROCEDURE get_structure_from_name(
+	IN s_name varchar(200),
+    OUT ID int unsigned)
+BEGIN
+	SELECT structure_id 
+    FROM Structure 
+    WHERE full_name = s_name
+    INTO ID;
+END //
+
+/* Procedure to get a group_id */
+DROP PROCEDURE IF EXISTS get_group //
+CREATE PROCEDURE get_group (
+    IN g_name varchar(200),
+    OUT newID int unsigned)
+BEGIN
+	select group_id
+    from DicomGroup
+    where group_name = g_name
+    limit 1
+	into newID;
+END //
+
+
+DROP PROCEDURE IF EXISTS get_group_structure //
+CREATE PROCEDURE get_group_structure (
+    IN g_id int unsigned,
+    IN s_id int unsigned,
+    OUT newID int unsigned)
+BEGIN
+	select group_structure_id
+    from GroupStructure
+    where group_id = g_id and structure_id = s_id
+    limit 1
+	into newID;
+END //
+
+
+DROP PROCEDURE IF EXISTS get_rtplan //
+CREATE PROCEDURE get_rtplan (
+    IN p_label varchar(200),
+    IN p_name varchar(300),
+    OUT newID int unsigned)
+BEGIN
+	select rtp_id
+    from RTPlan
+    where plan_label = p_label and plan_name = p_name
+    limit 1
+	into newID;
+END //
+
+
+DROP PROCEDURE IF EXISTS get_patient //
+CREATE PROCEDURE get_patient (
+    IN p_name varchar(200),
+    OUT newID int unsigned)
+BEGIN
+	select patient_id
+    from Patient
+    where anonymization_detail = p_name
+    limit 1
+	into newID;
+END //
+
+
+DROP PROCEDURE IF EXISTS get_dvh //
+CREATE PROCEDURE get_dvh (
+    IN gs_id int unsigned,
+    OUT newID int unsigned)
+BEGIN
+	select dvh_id
+    from DVH
+    where group_structure_id = gs_id
+    limit 1
+	into newID;
+END //
+
+
+
+
+/* Procedure to clean the db */
+DROP PROCEDURE IF EXISTS clean_macaron_db //
+CREATE PROCEDURE clean_macaron_db()
+BEGIN
+	DELETE FROM GroupPlanMetric WHERE group_plan_metric_id > 0;
+	DELETE FROM DVHDetail WHERE dvh_detail_id > 0;
+	DELETE FROM DVH WHERE dvh_id > 0;
+	DELETE FROM StructureFeature WHERE structure_feature_id > 0;
+	DELETE FROM GroupStructure WHERE group_structure_id > 0;
+	DELETE FROM DicomGroup WHERE group_id > 0;
+	DELETE FROM Structure WHERE structure_id > 0;
+	DELETE FROM RTDose WHERE rtd_id > 0;
+	DELETE FROM RTPlan WHERE rtp_id > 0;
+	DELETE FROM Patient WHERE patient_id > 0;
+END //
+
 DELIMITER ;
+
+call populate_db();
 
 /*
 --------------------------------------------------------------------------------------------------
@@ -572,26 +718,37 @@ drop view if exists seeRadiomicFeatures;
 CREATE VIEW seeRadiomicFeatures AS 
 	SELECT group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type", feature_name as "Feature Name", 
 		category_name as "Feature Category", feature_value as "Value" 
-    from ((((StructureFeature join RadiomicFeature using (feature_id)) 
+    from (StructureFeature join RadiomicFeature using (feature_id) 
 		inner join FeatureCategory on RadiomicFeature.feature_category = FeatureCategory.category_id)
-        join GroupStructure using(group_structure_id))
-        join DicomGroup using(group_id))
+        join GroupStructure using(group_structure_id)
+        join DicomGroup using(group_id)
         join Structure using(structure_id);
+
+
+/* View to scan Plan Metrics */
+drop view if exists seePlanMetrics;
+CREATE VIEW seePlanMetrics AS 
+	SELECT group_name as "Patient Name", metric_name as "Metric Name", plan_metric_value as "Value", metric_unit as "Measure Unit", 
+		plan_metric_img as "Image File"
+    from ((GroupPlanMetric join PlanMetric using(plan_metric_id))
+        join DicomGroup using(group_id));
+
+        
+drop view if exists seeStructures;
+CREATE VIEW seeStructures AS 
+	select group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type", 
+		concat('{', color_R, ', ', color_G, ', ', color_B, '}') as "Structure Color RGB" 
+	from structure join groupstructure using(structure_id) 
+		join dicomgroup using (group_id) 
+			join patient using(patient_id)
+	order by group_name, full_name;
+
+
 
 use macaron;
 
-SELECT group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type", feature_name as "Feature Name", 
-		category_name as "Feature Category", feature_value as "Value" 
-    from ((((StructureFeature join RadiomicFeature using (feature_id)) 
-		inner join FeatureCategory on RadiomicFeature.feature_category = FeatureCategory.category_id)
-        join GroupStructure using(group_structure_id))
-        join DicomGroup using(group_id))
-        join Structure using(structure_id) limit 2000;
+select * from rtdose;
 
-select * from seeRadiomicFeatures;
+select * from dicomgroup;
 
-SELECT * from StructureFeature join RadiomicFeature using (feature_id);
-
-select * from structureFeature limit 2000;
-
-select * from Structure;
+select * from seeStructures;
