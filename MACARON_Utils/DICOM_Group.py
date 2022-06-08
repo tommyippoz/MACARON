@@ -135,7 +135,7 @@ class DICOMGroup:
                                color=dvhcalc.np.array(structure['color'], dtype=float) / 255,
                                label=structure['name'],
                                linestyle='dashed')
-            pylab.xlabel('Distance (cm)')
+            pylab.xlabel('Dose')
             pylab.ylabel('Percentage Volume')
             pylab.legend(loc=7, borderaxespad=-5)
             pylab.setp(pylab.gca().get_legend().get_texts(), fontsize='x-small')

@@ -31,14 +31,14 @@ def store_patient(db, dg):
     @return: the patient_id
     """
     patient_data = dg.get_patient_info()
-    check_id = call_procedure(db, "get_patient", (dg.get_name(), 0), 1)
+    check_id = call_procedure(db, "get_patient", (dg.get_name(), 0), 1)[0]
     if check_id is None:
         params = (dg.get_name(), patient_data["Sex"], patient_data["BirthDate"], patient_data["ID"], 0)
         patient_id = call_procedure(db, "add_patient_full", params, 1)
         return patient_id[0]
     else:
         print("Patient  '" + dg.get_name() + "' already in the DB, not adding it again")
-        return check_id[0]
+        return check_id
 
 
 def store_plan(db, dg):
@@ -49,7 +49,7 @@ def store_plan(db, dg):
     @return: the plan_id
     """
     plan_data, pd = dg.get_plan()
-    check_id = call_procedure(db, "get_rtplan", (plan_data["label"], plan_data["name"], 0), 1)
+    check_id = call_procedure(db, "get_rtplan", (plan_data["label"], plan_data["name"], 0), 1)[0]
     if check_id is None:
         params = (plan_data["label"], plan_data["date"], plan_data["time"],
                   plan_data["name"], plan_data["rxdose"], plan_data["brachy"], 0)
@@ -57,7 +57,7 @@ def store_plan(db, dg):
         return plan_id[0]
     else:
         print("RTPLan  '" + plan_data["label"] + "' already in the DB, not adding it again")
-        return check_id[0]
+        return check_id
 
 
 def store_structures(db, dg):
@@ -71,7 +71,7 @@ def store_structures(db, dg):
     structure_ids = []
     for index in structures:
         structure = structures[index]
-        check_id = call_procedure(db, "get_structure_from_name", (structure["name"], 0), 1)
+        check_id = call_procedure(db, "get_structure_from_name", (structure["name"], 0), 1)[0]
         if check_id is None:
             params = (structure["id"], structure["name"], structure["type"],
                       0 if structure["empty"] is False else 1,
@@ -81,7 +81,7 @@ def store_structures(db, dg):
             structure_ids.append(structure_id[0])
         else:
             print("Structure '" + structure["name"] + "' already in the DB, not adding it again")
-            structure_ids.append(check_id[0])
+            structure_ids.append(check_id)
     return structure_ids
 
 
@@ -106,14 +106,14 @@ def store_group(db, dg, rtp_id, rtd_id, patient_id):
     @param dg: DICOM Group
     @return: the group_id
     """
-    check_id = call_procedure(db, "get_group", (dg.get_name(), 0), 1)
+    check_id = call_procedure(db, "get_group", (dg.get_name(), 0), 1)[0]
     if check_id is None:
         params = (dg.get_name(), rtp_id, rtd_id, patient_id, 0)
         group_id = call_procedure(db, "add_group_from_ids", params, 1)
         new_id = group_id[0]
     else:
         print("DICOM Group already exists, not adding it again")
-        new_id = check_id[0]
+        new_id = check_id
     return new_id
 
 
@@ -125,14 +125,14 @@ def store_group_structure(db, group_id, structure_ids):
     """
     gs_ids = []
     for s_id in structure_ids:
-        check_id = call_procedure(db, "get_group_structure", (group_id, s_id, 0), 1)
+        check_id = call_procedure(db, "get_group_structure", (group_id, s_id, 0), 1)[0]
         if check_id is None:
             params = (group_id, s_id, 0)
             gs_id = call_procedure(db, "add_group_structure", params, 1)
             gs_ids.append(gs_id[0])
         else:
             print("Group-Structure already exists, not adding it again")
-            gs_ids.append(check_id[0])
+            gs_ids.append(check_id)
     return gs_ids
 
 
@@ -189,7 +189,7 @@ def store_dvh(db, dg, g_id, img_folder):
         dvh_info = build_DVH_info(dvhs[structure])
         gs_id = call_procedure(db, "get_structure_id", (g_id, dvh_info["Structure"], 0), 1)[0]
 
-        check_id = call_procedure(db, "get_dvh", (gs_id, 0), 1)
+        check_id = call_procedure(db, "get_dvh", (gs_id, 0), 1)[0]
         if check_id is None:
             # Add DVH
             params = (gs_id, dvh_img_path, float(dvh_info["abs volume"]), dvh_info["type"], dvh_info["volume unit"],
@@ -209,7 +209,7 @@ def store_dvh(db, dg, g_id, img_folder):
             print("DVH '" + dvh_info["Structure"] + "' stored in the DB")
         else:
             print("DVH for structure '" + dvh_info["Structure"] + "' already exists, not adding it again")
-            dvh_ids.append(check_id[0])
+            dvh_ids.append(check_id)
 
     return dvh_ids
 
@@ -236,8 +236,8 @@ def store_all(dg, username, password, img_folder):
     rtd_id = store_dose(db, dg)
     group_id = store_group(db, dg, rtp_id, rtd_id, patient_id)
     gs_ids = store_group_structure(db, group_id, structures_id)
-    # radiomic_ids = store_radiomics(db, dg, group_id)
-    # pm_ids = store_plan_metric(db, dg, group_id, img_folder)
+    radiomic_ids = store_radiomics(db, dg, group_id)
+    pm_ids = store_plan_metric(db, dg, group_id, img_folder)
     dvh_ids = store_dvh(db, dg, group_id, img_folder)
 
 
