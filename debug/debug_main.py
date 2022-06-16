@@ -57,10 +57,10 @@ if __name__ == "__main__":
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
 
         for group in groups:
-            DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
+            #DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
             # #
             # # # Getting structures for the patient
-            # structures = dg.get_structures()
+            structures = group.get_structures()
             # # Getting treatment Plan
             # plan, rt_plan = dg.get_plan()
             # #
