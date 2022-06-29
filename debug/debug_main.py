@@ -2,7 +2,8 @@ import configparser
 import os.path
 
 from MACARON_Utils.DICOM_Group import DICOMGroup
-from MACARON_Utils.general_utils import clear_folder
+from MACARON_Utils.DICOM_Study import DICOMStudy
+from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
@@ -60,7 +61,8 @@ if __name__ == "__main__":
             #DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
             # #
             # # # Getting structures for the patient
-            structures = group.get_structures()
+            # cm = group.calculate_RTPlan_custom_metrics()
+            # structures = group.get_structures()
             # # Getting treatment Plan
             # plan, rt_plan = dg.get_plan()
             # #
@@ -70,8 +72,8 @@ if __name__ == "__main__":
             # # radiomic_features = dg.calculate_radiomics()
             # #
             # # # Calculating RTPlan metrics
-            # rtp_metrics = dg.calculate_RTPlan_metrics(output_folder=OUTPUT_FOLDER)
-            # dg.report(studies=[e for e in DICOMStudy], output_folder=OUTPUT_FOLDER)
+            # rtp_metrics = group.calculate_RTPlan_metrics(output_folder=OUTPUT_FOLDER)
+            group.report(studies=[DICOMStudy.CONTROL_POINT_METRICS], output_folder=OUTPUT_FOLDER)
             print("THE END")
 
     else:

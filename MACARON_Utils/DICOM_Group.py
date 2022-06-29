@@ -10,7 +10,7 @@ from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info, extractPatientData
-from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD
+from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD, complexity_indexes
 
 import matplotlib.pyplot as plt
 
@@ -45,6 +45,7 @@ class DICOMGroup:
         self.radiomics = None
         self.plan_details = None
         self.plan_metrics = None
+        self.plan_custom_metrics = None
 
     def get_name(self):
         return self.name
@@ -60,6 +61,8 @@ class DICOMGroup:
                     f_ob, f_type = load_DICOM(dicom_file)
                     if f_type == DICOMType.RT_PLAN:
                         self.rtp_object = DICOMObject(dicom_file, f_ob, f_type)
+                        if hasattr(f_ob, "PatientName"):
+                            self.name = str(f_ob.PatientName)
                     elif f_type == DICOMType.RT_STRUCT:
                         self.rts_object = DICOMObject(dicom_file, f_ob, f_type)
                     elif f_type == DICOMType.RT_DOSE:
@@ -70,8 +73,8 @@ class DICOMGroup:
                         print("Unable to decode file '" + dicom_file + "'")
         else:
             print("Folder '" + self.folder + "' does not exist")
-        return (self.rtp_object is not None) and (self.rts_object is not None) \
-               and (self.rtd_object is not None) and (self.tc_sequence is not None)
+        return (self.rtp_object is not None) or (self.rts_object is not None) \
+               or (self.rtd_object is not None) or (self.tc_sequence is not None and len(self.tc_sequence) > 0)
 
     def get_structures(self):
         """
@@ -243,6 +246,51 @@ class DICOMGroup:
             print("Supplied file is not an RT_PLAN")
         return self.plan_metrics, img_paths
 
+    def calculate_RTPlan_custom_metrics(self, generate_plots=True, output_folder=None):
+        """
+        Calculates Complexity indexes from RTPlan
+        :param output_folder: folder to print plots to
+        :param generate_plots: True if plots have to be generated and saved to file
+        :return: a dictionary containing the metric value and the unit for each RTPlan metric
+        """
+        self.plan_custom_metrics = {}
+        rt_ob = self.rtp_object.get_object()
+
+        if rt_ob is not None:
+
+            plan_dict = RTPlan(filename=self.rtp_object.get_file_name()).get_plan()
+            beam_index = 1
+
+            for beam in list(plan_dict["beams"].values()):
+
+                beam_name = "Beam" + str(beam_index)
+                self.plan_custom_metrics[beam_name] = {"Sequence": [], "YLess1CM": 0, "ApertureLess1CM": 0}
+
+                item_index = 0
+                for item in beam["ControlPointSequence"]:
+                    item_index += 1
+                    if hasattr(item, "BeamLimitingDevicePositionSequence") and \
+                            (len(item.BeamLimitingDevicePositionSequence) == 3):
+                        y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
+                        x_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                        lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
+                        cm = complexity_indexes(x_data, y_data, lj_arr)
+                        if cm is not None:
+                            cm["index"] = item_index
+                            if cm["yDiff"] < 1:
+                                self.plan_custom_metrics[beam_name]["YLess1CM"] += 1
+                            if cm["avgAperture"] < 1:
+                                self.plan_custom_metrics[beam_name]["ApertureLess1CM"] += 1
+                        self.plan_custom_metrics[beam_name]["Sequence"].append(cm)
+                    else:
+                        print("Item " + str(item_index) + "of beam " +
+                              str(beam_index) + " not properly formatted")
+                beam_index += 1
+
+        else:
+            print("Supplied file is not an RT_PLAN")
+        return self.plan_custom_metrics
+
     def report(self, studies, output_folder, clean_folder=True):
         if os.path.exists(output_folder) and os.path.isdir(output_folder):
             group_folder = output_folder + "/" + self.name + "/"
@@ -289,6 +337,10 @@ class DICOMGroup:
                             out_file = group_folder + "dvh_data_structure_" + str(dvh_id) + ".csv"
                             write_dict(dict_obj=build_DVH_info(self.dvhs[dvh_id]),
                                        filename=out_file, header="attribute,value")
+                    elif study is DICOMStudy.CONTROL_POINT_METRICS:
+                        self.calculate_RTPlan_custom_metrics()
+                        out_file = group_folder + "plan_custom_complexity_metrics.csv"
+                        write_dict(dict_obj=self.plan_custom_metrics, filename=out_file, header="beam,attribute,list_index,metric_name,metric_value")
                     else:
                         print("Cannot recognize study '" + study + "' to report about")
             else:

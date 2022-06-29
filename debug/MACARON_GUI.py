@@ -16,7 +16,7 @@ from MACARON_Utils.DICOM_Group import DICOMGroup
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.general_utils import clear_folder
 from database import DB_Manager
-from database.DB_Manager import connect, store_group, store_patient, create_patient
+from database.DB_Manager import connect, create_patient
 
 TMP_FOLDER = "tmp"
 
@@ -91,7 +91,8 @@ class MacaronGUI(tkinter.Frame):
             ["Radiomic Features", BooleanVar(value=True), DICOMStudy.RADIOMIC_FEATURES],
             ["Plan", BooleanVar(value=True), DICOMStudy.PLAN_DETAIL],
             ["Plan Metrics Data", BooleanVar(value=True), DICOMStudy.PLAN_METRICS_DATA],
-            ["Plan Metrics Plots", BooleanVar(value=True), DICOMStudy.PLAN_METRICS_IMG]]
+            ["Plan Metrics Plots", BooleanVar(value=True), DICOMStudy.PLAN_METRICS_IMG],
+            ["Control Point Metrics", BooleanVar(value=True), DICOMStudy.CONTROL_POINT_METRICS]]
 
         # Frame Init
         self.root = root
