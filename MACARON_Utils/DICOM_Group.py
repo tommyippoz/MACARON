@@ -97,7 +97,10 @@ class DICOMGroup:
         """
         Extracts dose data from DICOM Group
         """
-        return DICOM_utils.extractDoseData(self.rtd_object.get_object())
+        if self.rtd_object is not None:
+            return DICOM_utils.extractDoseData(self.rtd_object.get_object())
+        else:
+            return None
 
     def generate_DVH(self):
         """
@@ -132,17 +135,20 @@ class DICOMGroup:
                 self.generate_DVH()
             if self.structures is None:
                 self.get_structures()
-            for key, structure in self.structures.items():
-                if (key in self.dvhs) and (len(self.dvhs[key].counts) and self.dvhs[key].counts[0] != 0):
-                    pylab.plot(self.dvhs[key].counts * 100 / self.dvhs[key].counts[0],
-                               color=dvhcalc.np.array(structure['color'], dtype=float) / 255,
-                               label=structure['name'],
-                               linestyle='dashed')
-            pylab.xlabel('Dose')
-            pylab.ylabel('Percentage Volume')
-            pylab.legend(loc=7, borderaxespad=-5)
-            pylab.setp(pylab.gca().get_legend().get_texts(), fontsize='x-small')
-            pylab.savefig(dvh_path, dpi=75)
+            if self.structures is not None:
+                for key, structure in self.structures.items():
+                    if (key in self.dvhs) and (len(self.dvhs[key].counts) and self.dvhs[key].counts[0] != 0):
+                        pylab.plot(self.dvhs[key].counts * 100 / self.dvhs[key].counts[0],
+                                   color=dvhcalc.np.array(structure['color'], dtype=float) / 255,
+                                   label=structure['name'],
+                                   linestyle='dashed')
+                pylab.xlabel('Dose')
+                pylab.ylabel('Percentage Volume')
+                pylab.legend(loc=7, borderaxespad=-5)
+                pylab.setp(pylab.gca().get_legend().get_texts(), fontsize='x-small')
+                pylab.savefig(dvh_path, dpi=75)
+            else:
+                print("Unable to compute DVH: no RT_STRUCT file")
             return dvh_path
         else:
             print("'" + output_folder + "' is not a valid destination folder")
@@ -155,14 +161,23 @@ class DICOMGroup:
         """
         if self.rtp_object is not None:
             self.plan_details, rt_plan = DICOM_utils.get_plan(self.rtp_object.get_file_name())
-            if len(self.plan_details["date"]) == 0:
+            if hasattr(self.plan_details, "date") and len(self.plan_details["date"]) == 0:
                 self.plan_details["date"] = self.rtp_object.get_object().InstanceCreationDate
-            if len(self.plan_details["time"]) == 0:
+            else:
+                self.plan_details["date"] = "1900-01-01"
+            if hasattr(self.plan_details, "time") and len(self.plan_details["time"]) == 0:
                 self.plan_details["time"] = self.rtp_object.get_object().InstanceCreationTime
-            if len(self.plan_details["label"]) == 0:
+            else:
+                self.plan_details["time"] = 1
+            if hasattr(self.plan_details, "label") and len(self.plan_details["label"]) == 0:
                 self.plan_details["label"] = self.rtp_object.get_object().RTPlanLabel
-            if len(self.plan_details["name"]) == 0:
+            else:
+                self.plan_details["label"] = self.name
+            if hasattr(self.plan_details, "name") and len(self.plan_details["name"]) == 0:
                 self.plan_details["name"] = self.rtp_object.get_object().RTPlanName
+            else:
+                self.plan_details["name"] = self.name
+
             return self.plan_details, rt_plan
         else:
             return {}, {}
@@ -170,29 +185,34 @@ class DICOMGroup:
     def calculate_radiomics(self):
         source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
         mask_folder = self.tmp_folder + "/" + self.name + "_masks"
-        if not os.path.exists(source_nrrd):
-            print("Need to generate CT NRRD temporary file first")
-            create_CT_NRRD(ct_folder=self.folder, nrrd_filename=source_nrrd)
-        if not os.path.exists(mask_folder):
-            print("Need to generate mask NRRD temporary file first")
-            create_masks_NRRD(tmp_folder=self.tmp_folder, ct_nrrd_filename=source_nrrd,
-                              rt_struct_filename=self.rts_object.get_file_name(),
-                              name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
-        settings = {'binWidth': 25,
-                    'resampledPixelSpacing': None,
-                    'interpolator': SimpleITK.sitkBSpline}
+        if self.rts_object is not None:
+            if not os.path.exists(source_nrrd):
+                print("Need to generate CT NRRD temporary file first")
+                create_CT_NRRD(ct_folder=self.folder, nrrd_filename=source_nrrd)
+            if not os.path.exists(mask_folder):
+                print("Need to generate mask NRRD temporary file first")
+                create_masks_NRRD(tmp_folder=self.tmp_folder, ct_nrrd_filename=source_nrrd,
+                                  rt_struct_filename=self.rts_object.get_file_name(),
+                                  name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
+            settings = {'binWidth': 25,
+                        'resampledPixelSpacing': None,
+                        'interpolator': SimpleITK.sitkBSpline}
 
-        # Initialize feature extractor
-        extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
-        extractor.enableAllFeatures()
-        self.radiomics = {}
-        for file in os.listdir(mask_folder):
-            mask_nrrd = mask_folder + "/" + file
-            if os.path.isfile(mask_nrrd) and file.endswith(".nrrd"):
-                file = file.replace(".nrrd", "")
-                print("Calculating Radiomic features for '" + self.name + "', structure '" + file + "'")
-                self.radiomics[file] = extractor.execute(source_nrrd, mask_nrrd)
+            # Initialize feature extractor
+            extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
+            extractor.enableAllFeatures()
+            self.radiomics = {}
+            for file in os.listdir(mask_folder):
+                mask_nrrd = mask_folder + "/" + file
+                if os.path.isfile(mask_nrrd) and file.endswith(".nrrd"):
+                    file = file.replace(".nrrd", "")
+                    print("Calculating Radiomic features for '" + self.name + "', structure '" + file + "'")
+                    self.radiomics[file] = extractor.execute(source_nrrd, mask_nrrd)
+        else:
+            self.radiomics = {}
+            print("Cannot compute radiomic features: Missing RT_STRUCT file")
         return self.radiomics
+
 
     DEFAULT_RTP_METRICS = [
         PyComplexityMetric,
@@ -271,8 +291,8 @@ class DICOMGroup:
                     item_index += 1
                     if hasattr(item, "BeamLimitingDevicePositionSequence") and \
                             (len(item.BeamLimitingDevicePositionSequence) == 3):
-                        y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
-                        x_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                        x_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
+                        y_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
                         lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
                         cm = complexity_indexes(x_data, y_data, lj_arr)
                         if cm is not None:

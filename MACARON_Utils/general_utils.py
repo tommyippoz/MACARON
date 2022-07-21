@@ -25,29 +25,35 @@ def write_dict(dict_obj, filename, header=None):
 
 
 def write_rec_dict(out_f, dict_obj, prequel):
-    for key in dict_obj.keys():
-        if (type(dict_obj[key]) is dict) or issubclass(type(dict_obj[key]), dict):
-            if len(dict_obj[key]) > 10:
-                for inner in dict_obj[key].keys():
-                    if (prequel is None) or (len(prequel) == 0):
-                        out_f.write("%s,%s,%s\n" % (key, inner, dict_obj[key][inner]))
-                    else:
-                        out_f.write("%s,%s,%s,%s\n" % (prequel, key, inner, dict_obj[key][inner]))
+    if (type(dict_obj) is dict) or issubclass(type(dict_obj), dict):
+        for key in dict_obj.keys():
+            if (type(dict_obj[key]) is dict) or issubclass(type(dict_obj[key]), dict):
+                if len(dict_obj[key]) > 10:
+                    for inner in dict_obj[key].keys():
+                        if (prequel is None) or (len(prequel) == 0):
+                            out_f.write("%s,%s,%s\n" % (key, inner, dict_obj[key][inner]))
+                        else:
+                            out_f.write("%s,%s,%s,%s\n" % (prequel, key, inner, dict_obj[key][inner]))
+                else:
+                    prequel = prequel + "," + str(key) if (prequel is not None) and (len(prequel) > 0) else str(key)
+                    write_rec_dict(out_f, dict_obj[key], prequel)
+            elif type(dict_obj[key]) is list:
+                item_count = 1
+                for item in dict_obj[key]:
+                    new_prequel = prequel + "," + str(key) + ",item" + str(item_count) \
+                        if (prequel is not None) and (len(prequel) > 0) else str(key) + ",item" + str(item_count)
+                    write_rec_dict(out_f, item, new_prequel)
+                    item_count += 1
             else:
-                prequel = prequel + "," + str(key) if (prequel is not None) and (len(prequel) > 0) else str(key)
-                write_rec_dict(out_f, dict_obj[key], prequel)
-        elif type(dict_obj[key]) is list:
-            item_count = 1
-            for item in dict_obj[key]:
-                new_prequel = prequel + "," + str(key) + ",item" + str(item_count) \
-                    if (prequel is not None) and (len(prequel) > 0) else str(key) + ",item" + str(item_count)
-                write_rec_dict(out_f, item, new_prequel)
-                item_count += 1
+                if (prequel is None) or (len(prequel) == 0):
+                    out_f.write("%s,%s\n" % (key, dict_obj[key]))
+                else:
+                    out_f.write("%s,%s,%s\n" % (prequel, key, dict_obj[key]))
+    else:
+        if (prequel is None) or (len(prequel) == 0):
+            out_f.write("%s\n" % dict_obj)
         else:
-            if (prequel is None) or (len(prequel) == 0):
-                out_f.write("%s,%s\n" % (key, dict_obj[key]))
-            else:
-                out_f.write("%s,%s,%s\n" % (prequel, key, dict_obj[key]))
+            out_f.write("%s,%s\n" % (prequel, dict_obj))
 
 
 def create_CT_NRRD(ct_folder, nrrd_filename):
@@ -102,29 +108,52 @@ def process_mask_NRRD(mask_NRRD_file):
 
 def complexity_indexes(x12, y12, lj_array, jawSize=5):
 
-    minActiveIndex = int(len(lj_array)/4) + int(x12[0] / jawSize)
-    maxActiveIndex = int(len(lj_array)/4) + int(x12[1] / jawSize)
+    minActiveIndex = int(len(lj_array)/4) + int(y12[0] / jawSize)
+    maxActiveIndex = int(len(lj_array)/4) + int(y12[1] / jawSize)
 
     apertures = []
+    overlap_w_previous = [0]
+    left_old = 0
+    right_old = 0
+    perimeter = 0
     for i in range(minActiveIndex, maxActiveIndex):
+        # Computing Aperture
         left = lj_array[i]
         right = lj_array[int(len(lj_array)/2)+i]
         apertures.append(abs(left - right))
+        # Computing Perimeter iteratively
+        ap_i = i - minActiveIndex
+        if i == minActiveIndex:
+            perimeter += apertures[ap_i]
+        else:
+            if (right <= left_old) or (left >= right_old):
+                # Two apertures do not overlap
+                contrib = apertures[ap_i] + apertures[ap_i-1]
+            elif (right <= right_old) and (left >= left_old):
+                # Old aperture wraps the new one
+                contrib = apertures[ap_i-1] - apertures[ap_i]
+            elif (right > right_old) and (left < left_old):
+                # New aperture wraps the old one
+                contrib = apertures[ap_i] - apertures[ap_i-1]
+            else:
+                # New aperture overlaps + exceeds on the right/left
+                contrib = abs(left - left_old) + abs(right - right_old)
+            perimeter += contrib
+        left_old = left
+        right_old = right
 
-    perimeter = apertures[0] + apertures[-1]
-    for i in range(1, len(apertures)):
-        perimeter += abs(apertures[i] - apertures[i-1])
+    perimeter += apertures[-1]
 
     cm = {"minAperture": min(apertures),
           "maxAperture": max(apertures),
           "avgAperture": sum(apertures)/len(apertures),
           "yDiff": abs(y12[0] - y12[1]),
-          "totalJaws": int(len(lj_array)/2),
-          "activeJaws": len(apertures),
-          "lowestActiveJaw": minActiveIndex,
-          "highestActiveJaw": maxActiveIndex,
-          "perimeter": perimeter*jawSize,
-          "perimeterNoJawSize": perimeter,
+          "totalMLC": int(len(lj_array)/2),
+          "activeMLC": len(apertures),
+          "lowestActiveMLC": minActiveIndex,
+          "highestActiveMLC": maxActiveIndex-1,
+          "perimeter": perimeter + abs(y12[0] - y12[1])*2,
+          "perimeterNoMLCSize": perimeter,
           "area": sum(apertures)*jawSize}
 
     return cm

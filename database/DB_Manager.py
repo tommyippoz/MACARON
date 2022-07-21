@@ -33,7 +33,9 @@ def store_patient(db, dg):
     patient_data = dg.get_patient_info()
     check_id = call_procedure(db, "get_patient", (dg.get_name(), 0), 1)[0]
     if check_id is None:
-        params = (dg.get_name(), patient_data["Sex"], patient_data["BirthDate"], patient_data["ID"], 0)
+        params = (dg.get_name(), patient_data["Sex"],
+                  patient_data["BirthDate"] if len(patient_data["BirthDate"]) > 0 else '1900-01-01',
+                  patient_data["ID"], 0)
         patient_id = call_procedure(db, "add_patient_full", params, 1)
         return patient_id[0]
     else:
@@ -49,10 +51,17 @@ def store_plan(db, dg):
     @return: the plan_id
     """
     plan_data, pd = dg.get_plan()
-    check_id = call_procedure(db, "get_rtplan", (plan_data["label"], plan_data["name"], 0), 1)[0]
+    if hasattr(plan_data, "label") and len(plan_data["label"]) > 0 and \
+            hasattr(plan_data, "name") and len(plan_data["name"]) > 0:
+        check_id = call_procedure(db, "get_rtplan", (plan_data["label"], plan_data["name"], 0), 1)[0]
+    else:
+        check_id = None
     if check_id is None:
         params = (plan_data["label"], plan_data["date"], plan_data["time"],
-                  plan_data["name"], plan_data["rxdose"], plan_data["brachy"], 0)
+                  plan_data["name"],
+                  plan_data["rxdose"] if hasattr(plan_data, "rxdose") else 0,
+                  plan_data["brachy"] if hasattr(plan_data, "brachy") else 0,
+                  0)
         plan_id = call_procedure(db, "add_rtp_full", params, 1)
         return plan_id[0]
     else:
@@ -93,10 +102,13 @@ def store_dose(db, dg):
     @return: the dose_id
     """
     dose_data = dg.get_dose_info()
-    params = (float(dose_data["GridScaling"]), dose_data["SumType"],
-              dose_data["Type"], dose_data["Units"], 0)
-    dose_id = call_procedure(db, "add_rtd_full", params, 1)
-    return dose_id[0]
+    if dose_data is not None:
+        params = (float(dose_data["GridScaling"]), dose_data["SumType"],
+                  dose_data["Type"], dose_data["Units"], 0)
+        dose_id = call_procedure(db, "add_rtd_full", params, 1)
+        return dose_id[0]
+    else:
+        return None
 
 
 def store_group(db, dg, rtp_id, rtd_id, patient_id):
@@ -185,31 +197,34 @@ def store_dvh(db, dg, g_id, img_folder):
     dvh_img_path = dg.print_dvh(output_folder=img_folder)
 
     dvh_ids = []
-    for structure in dvhs:
-        dvh_info = build_DVH_info(dvhs[structure])
-        gs_id = call_procedure(db, "get_structure_id", (g_id, dvh_info["Structure"], 0), 1)[0]
+    if dvhs is not None:
+        for structure in dvhs:
+            dvh_info = build_DVH_info(dvhs[structure])
+            gs_id = call_procedure(db, "get_structure_id", (g_id, dvh_info["Structure"], 0), 1)[0]
 
-        check_id = call_procedure(db, "get_dvh", (gs_id, 0), 1)[0]
-        if check_id is None:
-            # Add DVH
-            params = (gs_id, dvh_img_path, float(dvh_info["abs volume"]), dvh_info["type"], dvh_info["volume unit"],
-                      dvh_info["dose unit"], float(dvh_info["Max Dose"]), float(dvh_info["Min Dose"]),
-                      float(dvh_info["Mean Dose"]), float(dvh_info["D100"].value), float(dvh_info["D98"].value),
-                      float(dvh_info["D95"].value), float(dvh_info["D2cc"].value), 0)
-            dvh_id = call_procedure(db, "add_dvh", params, 1)[0]
-            dvh_ids.append(dvh_id)
+            check_id = call_procedure(db, "get_dvh", (gs_id, 0), 1)[0]
+            if check_id is None:
+                # Add DVH
+                params = (gs_id, dvh_img_path, float(dvh_info["abs volume"]), dvh_info["type"], dvh_info["volume unit"],
+                          dvh_info["dose unit"], float(dvh_info["Max Dose"]), float(dvh_info["Min Dose"]),
+                          float(dvh_info["Mean Dose"]), float(dvh_info["D100"].value), float(dvh_info["D98"].value),
+                          float(dvh_info["D95"].value), float(dvh_info["D2cc"].value), 0)
+                dvh_id = call_procedure(db, "add_dvh", params, 1)[0]
+                dvh_ids.append(dvh_id)
 
-            # Add DVH detail with all data
-            counts = [float(x) for x in dvh_info["counts"].split(',')]
-            bins = [float(x) for x in dvh_info["bins"].split(',')]
-            for i in range(0, len(counts)):
-                params = (dvh_id, counts[i], bins[i], 0)
-                dvh_detail_id = call_procedure(db, "add_dvh_detail", params, 1)
+                # Add DVH detail with all data
+                counts = [float(x) for x in dvh_info["counts"].split(',')]
+                bins = [float(x) for x in dvh_info["bins"].split(',')]
+                for i in range(0, len(counts)):
+                    params = (dvh_id, counts[i], bins[i], 0)
+                    dvh_detail_id = call_procedure(db, "add_dvh_detail", params, 1)
 
-            print("DVH '" + dvh_info["Structure"] + "' stored in the DB")
+                print("DVH '" + dvh_info["Structure"] + "' stored in the DB")
+            else:
+                print("DVH for structure '" + dvh_info["Structure"] + "' already exists, not adding it again")
+                dvh_ids.append(check_id)
         else:
-            print("DVH for structure '" + dvh_info["Structure"] + "' already exists, not adding it again")
-            dvh_ids.append(check_id)
+            print("Cannot compute DVH: No RT_STRUCT file")
 
     return dvh_ids
 
@@ -223,6 +238,28 @@ def create_patient(db, dg):
     rtd_id = store_dose(db, dg)
     group_id = store_group(db, dg, rtp_id, rtd_id, patient_id)
     return group_id
+
+
+def store_cp_metrics(db, dg, group_id):
+    """
+        Stores data of the RTPlan  Quality Metrics in the MySQL database
+        @param db: database connection
+        @param dg: DICOM Group
+        @return: the pc_ids
+        """
+    rtp_cm = dg.calculate_RTPlan_custom_metrics()
+    cpm_ids = []
+    for beam in rtp_cm.keys():
+        seq_obj = rtp_cm[beam]["Sequence"]
+        cp_index = 1
+        for cpm in seq_obj:
+            params = (group_id, cp_index, beam, cpm["minAperture"], cpm["maxAperture"], cpm["avgAperture"],
+                      cpm["yDiff"], cpm["totalMLC"], cpm["activeMLC"], cpm["lowestActiveMLC"],
+                      cpm["highestActiveMLC"], cpm["perimeter"], cpm["perimeterNoMLCSize"], cpm["area"], 0)
+            pm_id = call_procedure(db, "add_control_point_metric_values", params, 1)
+            cpm_ids.append(pm_id)
+            cp_index = cp_index + 1
+    return cpm_ids
 
 
 def store_all(dg, username, password, img_folder):
@@ -239,6 +276,7 @@ def store_all(dg, username, password, img_folder):
     radiomic_ids = store_radiomics(db, dg, group_id)
     pm_ids = store_plan_metric(db, dg, group_id, img_folder)
     dvh_ids = store_dvh(db, dg, group_id, img_folder)
+    cmp_ids = store_cp_metrics(db, dg, group_id)
 
 
 def store(study, patient, db_conn, group_id, img_folder):
@@ -253,6 +291,8 @@ def store(study, patient, db_conn, group_id, img_folder):
         return store_radiomics(db_conn, patient, group_id)
     elif study is DICOMStudy.DVH_IMG or study is DICOMStudy.DVH_DATA:
         return store_dvh(db_conn, patient, group_id, img_folder)
+    elif study is DICOMStudy.CONTROL_POINT_METRICS:
+        return store_cp_metrics(db_conn, patient, group_id)
     else:
         print("Cannot recognize study '" + study + "' to compute and store in DB")
 
@@ -270,5 +310,5 @@ if __name__ == "__main__":
 
     res = call_procedure(db, "add_patient", ("ciaone", 0), 1)
     print(res)
-    
+
     db.close()
