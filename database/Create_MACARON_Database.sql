@@ -12,6 +12,8 @@ use macaron;
 --------------------------------------------------------------------------------------------------
 */
 
+drop table if exists GroupControlPointMetric;
+drop table if exists ControlPointMetric;
 drop table if exists GroupPlanMetric;
 drop table if exists PlanMetric;
 drop table if exists DVHDetail;
@@ -77,8 +79,8 @@ create table Structure (
 create table DicomGroup (
 	group_id int unsigned auto_increment,
     group_name varchar(200) default null,
-    group_rtp int unsigned not null,
-    group_rtd int unsigned not null,
+    group_rtp int unsigned,
+    group_rtd int unsigned,
     patient_id int unsigned not null,
     primary key (group_id),
     foreign key (patient_id) references Patient(patient_id),
@@ -165,6 +167,26 @@ create table GroupPlanMetric (
     foreign key (plan_metric_id) references PlanMetric(plan_metric_id)
 );
 
+create table ControlPointMetric (
+	cp_metric_id int unsigned auto_increment,
+    metric_name varchar(100) not null,
+    metric_unit varchar(100) default "cm",
+    primary key (cp_metric_id)
+);
+
+create table GroupControlPointMetric (
+	gcp_metric_id int unsigned auto_increment,
+    group_id int unsigned not null,
+    cp_index int unsigned not null,
+    beam varchar(30) not null,
+    cp_metric_id int unsigned not null,
+    cp_metric_value float not null,
+    primary key (gcp_metric_id),
+    foreign key (group_id) references DicomGroup(group_id),
+    foreign key (cp_metric_id) references ControlPointMetric(cp_metric_id),
+    unique (group_id, cp_index, beam, cp_metric_id)
+);
+
 
 
 /*
@@ -192,7 +214,22 @@ BEGIN
 		("PyComplexityMetric", "CI [mm^-1]"),
 		("MeanAreaMetricEstimator", "mm^2"),
 		("AreaMetricEstimator", "mm^2"),
-		("ApertureIrregularityMetric", "dimensionless");
+		("ApertureIrregularityMetric", "dimensionless"),
+        ("AverageAperture Less1CM", "cm"),
+        ("Y1-Y2 Difference Less1CM", "cm");
+        
+	insert into ControlPointMetric (metric_name, metric_unit) values
+		("minAperture", "cm"),
+		("maxAperture", "cm"),
+		("avgAperture", "cm"),
+		("yDiff", "cm"),
+        ("totalMLC", "cm"),
+        ("activeMLC", "cm"),
+        ("lowestActiveMLC", "cm"),
+        ("highestActiveMLC", "cm"),
+        ("perimeter", "cm"),
+        ("perimeterNoMLCSize", "cm"),
+        ("area", "cm^2");
 		
 	/* Diagnostic Features */
 	insert into RadiomicFeature (feature_name, feature_category, feature_type) values
@@ -530,7 +567,7 @@ BEGIN
 	SET newID = last_insert_id();
 END //
 
-/* Procedure to add a new rt_dose, returns the rtd_id */
+/* Procedure to add a new plan complexity metric value, returns the plan_metric_id */
 DROP PROCEDURE IF EXISTS add_plan_metric_value //
 CREATE PROCEDURE add_plan_metric_value(
 	IN g_id int unsigned,
@@ -549,6 +586,76 @@ BEGIN
 	INSERT INTO GroupPlanMetric(group_id, plan_metric_id, plan_metric_value, plan_metric_img)
 		VALUES (g_id, m_id, pm_value, pm_img);
 	SET newID = last_insert_id();
+END //
+
+/* Procedure to add a new control point metric value, returns the cpm_id */
+DROP PROCEDURE IF EXISTS add_control_point_metric_value //
+CREATE PROCEDURE add_control_point_metric_value(
+	IN g_id int unsigned,
+    IN cpm_beam varchar(30),
+    IN cpm_name varchar(100),
+    IN cpm_value float,
+    IN cpm_index int unsigned,
+    OUT newID int unsigned)
+BEGIN
+	DECLARE cpm_id int unsigned;
+    
+    SELECT cp_metric_id
+    FROM ControlPointMetric
+    WHERE metric_name = cpm_name
+    INTO cpm_id;
+
+	INSERT INTO GroupControlPointMetric(group_id, cp_index, beam, cp_metric_id, cp_metric_value)
+		VALUES (g_id, cpm_index, cpm_beam, cpm_id, cpm_value);
+	SET newID = last_insert_id();
+END //
+
+/* Procedure to add a new control point metric values, returns the cpm_ids */
+DROP PROCEDURE IF EXISTS add_control_point_metric_values //
+CREATE PROCEDURE add_control_point_metric_values(
+	IN g_id int unsigned,
+    IN cpm_index int unsigned,
+    IN cpm_beam varchar(30),
+    IN cpm_min_aperture float,
+    IN cpm_max_aperture float,
+    IN cpm_avg_aperture float,
+    IN cpm_y_diff float,
+    IN cpm_tot_jaws float,
+    IN cpm_active_jaws float,
+    IN cpm_lowest_jaw float,
+    IN cpm_highest_jaw float,
+    IN cpm_perimeter float,
+    IN cpm_perimeter_nojaw float,
+    IN cpm_area float,
+    OUT newIDS varchar(300))
+BEGIN
+	DECLARE newIDS varchar(300);
+    DECLARE newID int unsigned;
+    SET newIDS = "";
+    
+    CALL add_control_point_metric_value(g_id, cpm_beam, "minAperture", cpm_min_aperture, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "maxAperture", cpm_min_aperture, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "avgAperture", cpm_min_aperture, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "yDiff", cpm_y_diff, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "totalMLC", cpm_tot_jaws, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "activeMLC", cpm_active_jaws, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "lowestActiveMLC", cpm_lowest_jaw, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "highestActiveMLC", cpm_highest_jaw, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "perimeter", cpm_perimeter, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "perimeterNoMLCSize", cpm_perimeter_nojaw, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");
+    CALL add_control_point_metric_value(g_id, cpm_beam, "area", cpm_area, cpm_index, @newID);
+    SET newIDS = CONCAT(newIDS, CAST(@newID as CHAR(10)), ",");    
+    
 END //
 
 /* Procedure to add a new dvh, returns the dvh_id */
@@ -742,13 +849,47 @@ CREATE VIEW seeStructures AS
 		join dicomgroup using (group_id) 
 			join patient using(patient_id)
 	order by group_name, full_name;
+    
 
+drop view if exists seeDVH;
+CREATE VIEW seeDVH AS 
+	select group_name as "Patient Name", full_name as "Structure Name", structure_type as "Structure Type",
+		image_path, abs_volume, diagram_type, volume_unit, dose_unit, max_dose, min_dose, mean_dose, D100, D98, D95, D2cc
+	from structure join groupstructure using(structure_id) 
+		join dicomgroup using (group_id) 
+			join patient using(patient_id)
+				join dvh using(group_structure_id)
+	order by group_name, full_name;
+    
+    
+drop view if exists seeControlPointMetrics;
+CREATE VIEW seeControlPointMetrics AS 
+	select group_name as "Patient Name", cp_index as "CP Index", metric_name as "Metric Name", cp_metric_value as "Metric Value"
+	from groupcontrolpointmetric join dicomgroup using (group_id) 
+			join patient using(patient_id)
+				join controlpointmetric using(cp_metric_id)
+	order by group_name, cp_index;
 
 
 use macaron;
+
+select * from rtplan;
+select * from seeControlPointMetrics;
+
+call add_control_point_metric_values(3, 1, 0.0, 54.4, 16.3125, 210.0, 40, 32, 4, 36, 660.0, 132.0, 2610.0, @id);
+
+call add_control_point_metric_value(3, "minAperture", 10, 1, @newID);
+
+SELECT cp_metric_id
+    FROM ControlPointMetric
+    WHERE metric_name = "minAperture";
+
+select * from seeDVH;
 
 select * from rtdose;
 
 select * from dicomgroup;
 
-select * from seeStructures;
+select * from groupstructure;
+
+select * from GroupControlPointMetric;
