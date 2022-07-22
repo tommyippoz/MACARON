@@ -10,7 +10,8 @@ from MACARON_Utils.DICOMType import DICOMType
 from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info, extractPatientData
-from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD, complexity_indexes
+from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD, complexity_indexes, \
+    create_mask_NRRD, test_NRRD
 
 import matplotlib.pyplot as plt
 
@@ -43,6 +44,7 @@ class DICOMGroup:
         self.structures = None
         self.dvhs = None
         self.radiomics = None
+        self.radiomics_dose = None
         self.plan_details = None
         self.plan_metrics = None
         self.plan_custom_metrics = None
@@ -213,6 +215,42 @@ class DICOMGroup:
             print("Cannot compute radiomic features: Missing RT_STRUCT file")
         return self.radiomics
 
+    def calculate_dose_radiomics(self):
+        source_nrrd = self.tmp_folder + "/" + self.name + "_dose.nrrd"
+        ct_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
+        mask_folder = self.tmp_folder + "/" + self.name + "_masks"
+        if self.rtd_object is not None:
+            if not os.path.exists(ct_nrrd):
+                print("Need to generate CT NRRD temporary file first")
+                create_CT_NRRD(ct_folder=self.folder, nrrd_filename=ct_nrrd)
+            if not os.path.exists(source_nrrd):
+                print("Need to generate DOSE NRRD temporary file first")
+                test_NRRD(nrrd_filename=source_nrrd, base_file=self.rtd_object.get_file_name(),
+                          ct_nrrd_filename=ct_nrrd)
+            if not os.path.exists(mask_folder):
+                print("Need to generate mask NRRD temporary file first")
+                create_masks_NRRD(tmp_folder=self.tmp_folder, ct_nrrd_filename=ct_nrrd,
+                                  rt_struct_filename=self.rts_object.get_file_name(),
+                                  name=self.name, rt_dose_filename=self.rtd_object.get_file_name())
+            settings = {'binWidth': 25,
+                        'resampledPixelSpacing': None,
+                        'interpolator': SimpleITK.sitkBSpline}
+
+            # Initialize feature extractor
+            extractor = featureextractor.RadiomicsFeatureExtractor(**settings)
+            extractor.enableAllFeatures()
+            self.radiomics_dose = {}
+            for file in os.listdir(mask_folder):
+                mask_nrrd = mask_folder + "/" + file
+                if os.path.isfile(mask_nrrd) and file.endswith(".nrrd"):
+                    file = file.replace(".nrrd", "")
+                    print("Calculating Radiomic Dose features for '" + self.name + "', structure '" + file + "'")
+                    self.radiomics_dose[file] = extractor.execute(source_nrrd, mask_nrrd)
+        else:
+            self.radiomics_dose = {}
+            print("Cannot compute radiomic features for dose: Missing RT_DOSE file")
+        return self.radiomics_dose
+
 
     DEFAULT_RTP_METRICS = [
         PyComplexityMetric,
@@ -348,6 +386,11 @@ class DICOMGroup:
                         if self.radiomics is None:
                             self.calculate_radiomics()
                         write_dict(dict_obj=self.radiomics, filename=out_file, header="structure,feature,value")
+                    elif study is DICOMStudy.DOSE_RADIOMIC_FEATURES:
+                        out_file = group_folder + "dose_radiomic_features.csv"
+                        if self.radiomics is None:
+                            self.calculate_dose_radiomics()
+                        write_dict(dict_obj=self.radiomics_dose, filename=out_file, header="structure,feature,value")
                     elif study is DICOMStudy.DVH_IMG:
                         self.print_dvh(output_folder=group_folder)
                     elif study is DICOMStudy.DVH_DATA:

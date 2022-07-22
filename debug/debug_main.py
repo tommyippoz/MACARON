@@ -7,7 +7,7 @@ from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
-MAIN_FOLDER = "../DICOM_Files/doe_john"
+MAIN_FOLDER = "../DICOM_Files/ADAM"
 TMP_FOLDER = "tmp"
 OUTPUT_FOLDER = "output"
 
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
 
         for group in groups:
-            DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
+            #DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
             # #
             # # # Getting structures for the patient
             # cm = group.calculate_RTPlan_custom_metrics()
@@ -69,11 +69,12 @@ if __name__ == "__main__":
             # # Generate DVH
             # dvhs, figure_dvh =  group.generate_DVH()
             # # # Calculating radiomic features
-            # # radiomic_features = dg.calculate_radiomics()
+            # radiomic_features = group.calculate_radiomics()
+            #dose_radiomics = group.calculate_dose_radiomics()
             # #
             # # # Calculating RTPlan metrics
             # rtp_metrics = group.calculate_RTPlan_metrics(output_folder=OUTPUT_FOLDER)
-            # group.report(studies=[DICOMStudy.CONTROL_POINT_METRICS], output_folder=OUTPUT_FOLDER)
+            group.report(studies=[DICOMStudy.DOSE_RADIOMIC_FEATURES], output_folder=OUTPUT_FOLDER)
             print("THE END")
 
     else:

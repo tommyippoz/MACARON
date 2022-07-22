@@ -56,6 +56,17 @@ def write_rec_dict(out_f, dict_obj, prequel):
             out_f.write("%s,%s\n" % (prequel, dict_obj))
 
 
+def test_NRRD(base_file, nrrd_filename, ct_nrrd_filename):
+    if distutils.spawn.find_executable('plastimatch') is not None:
+        call(['plastimatch', 'convert', '--input', base_file, '--output-dose-img', nrrd_filename,
+              '--fixed', ct_nrrd_filename, '--prefix-format', 'nrrd'])
+        call(['plastimatch', 'resample', '--input', nrrd_filename, '--output', nrrd_filename,
+              '--fixed', ct_nrrd_filename])
+    else:
+        print("Dependency converter(s) not found in the path.\n Plastimatch (http://plastimatch.org/) "
+              "needs to be installed and available in the PATH for using this converter script.")
+
+
 def create_CT_NRRD(ct_folder, nrrd_filename):
     if distutils.spawn.find_executable('plastimatch') is not None:
         call(['plastimatch', 'convert', '--input', ct_folder, '--output-img', nrrd_filename])
@@ -64,10 +75,10 @@ def create_CT_NRRD(ct_folder, nrrd_filename):
               "needs to be installed and available in the PATH for using this converter script.")
 
 
-def create_mask_NRRD(ct_folder, nrrd_filename, rt_struct_filename):
+def create_mask_NRRD(ct_folder, nrrd_filename, base_filename):
     if distutils.spawn.find_executable('plastimatch') is not None:
-        call(['plastimatch', 'convert', '--input', rt_struct_filename, '--output-labelmap', nrrd_filename,
-              '--referenced-ct', ct_folder])
+        call(['plastimatch', 'convert', '--input', base_filename, '--output-prefix', nrrd_filename,
+              '--referenced-ct', ct_folder, '--prefix-format', 'nrrd'])
     else:
         print("Dependency converter(s) not found in the path.\n Plastimatch (http://plastimatch.org/) "
               "needs to be installed and available in the PATH for using this converter script.")

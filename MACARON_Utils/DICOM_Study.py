@@ -5,6 +5,7 @@ class DICOMStudy(Enum):
     """
     Enum variable that contains all the possible studies from a DICOMGroup
     """
+    DOSE_RADIOMIC_FEATURES = 9
     CONTROL_POINT_METRICS = 8
     STRUCTURES = 1
     PLAN_DETAIL = 2
