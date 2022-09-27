@@ -1,6 +1,8 @@
 import distutils.spawn
 import os
 import shutil
+import sys
+
 import numpy
 import SimpleITK
 from subprocess import call
@@ -35,8 +37,8 @@ def write_rec_dict(out_f, dict_obj, prequel):
                         else:
                             out_f.write("%s,%s,%s,%s\n" % (prequel, key, inner, dict_obj[key][inner]))
                 else:
-                    prequel = prequel + "," + str(key) if (prequel is not None) and (len(prequel) > 0) else str(key)
-                    write_rec_dict(out_f, dict_obj[key], prequel)
+                    new_prequel = prequel + "," + str(key) if (prequel is not None) and (len(prequel) > 0) else str(key)
+                    write_rec_dict(out_f, dict_obj[key], new_prequel)
             elif type(dict_obj[key]) is list:
                 item_count = 1
                 for item in dict_obj[key]:
@@ -117,22 +119,36 @@ def process_mask_NRRD(mask_NRRD_file):
     SimpleITK.WriteImage(mask, mask_NRRD_file, True)  # Specify True to enable compression
 
 
-def complexity_indexes(x12, y12, lj_array, jawSize=5):
+def complexity_indexes(y12, lj_array, jawSize=5):
 
     minActiveIndex = int(len(lj_array)/4) + int(y12[0] / jawSize)
     maxActiveIndex = int(len(lj_array)/4) + int(y12[1] / jawSize)
 
+    # Pre-Scan of the MLCs
+    max_right = -sys.float_info.max
+    min_left = sys.float_info.max
+    for i in range(minActiveIndex, maxActiveIndex):
+        # Computing Aperture
+        left = lj_array[i]
+        right = lj_array[int(len(lj_array) / 2) + i]
+        # Finding minleft / maxright
+        if left < min_left:
+            min_left = left
+        if right > max_right:
+            max_right = right
+
+    # Computing most of the Metrics
     apertures = []
-    overlap_w_previous = [0]
     left_old = 0
     right_old = 0
     perimeter = 0
+
     for i in range(minActiveIndex, maxActiveIndex):
         # Computing Aperture
         left = lj_array[i]
         right = lj_array[int(len(lj_array)/2)+i]
         apertures.append(abs(left - right))
-        # Computing Perimeter iteratively
+        # Computing Perimeter and LSV iteratively
         ap_i = i - minActiveIndex
         if i == minActiveIndex:
             perimeter += apertures[ap_i]
@@ -152,19 +168,31 @@ def complexity_indexes(x12, y12, lj_array, jawSize=5):
             perimeter += contrib
         left_old = left
         right_old = right
-
     perimeter += apertures[-1]
 
-    cm = {"minAperture": min(apertures),
-          "maxAperture": max(apertures),
-          "avgAperture": sum(apertures)/len(apertures),
-          "yDiff": abs(y12[0] - y12[1]),
-          "totalMLC": int(len(lj_array)/2),
-          "activeMLC": len(apertures),
-          "lowestActiveMLC": minActiveIndex,
-          "highestActiveMLC": maxActiveIndex-1,
-          "perimeter": perimeter + abs(y12[0] - y12[1])*2,
-          "perimeterNoMLCSize": perimeter,
-          "area": sum(apertures)*jawSize}
+    cm = {
+        # Minimum Aperture between aligned MLC
+        "minAperture": min(apertures),
+        # Maximum Aperture between aligned MLC
+        "maxAperture": max(apertures),
+        # Maximum Aperture between misaligned MLC
+        "maxApertureNoAlign": abs(max_right - min_left),
+        # Average Aperture between aligned MLCs
+        "avgAperture": sum(apertures)/len(apertures),
+        "yDiff": abs(y12[0] - y12[1]),
+        # Number of MLCs
+        "totalMLC": int(len(lj_array)/2),
+        # Number of Active MLCs
+        "activeMLC": len(apertures),
+        # Active MLC with the lowest index
+        "lowestActiveMLC": minActiveIndex,
+        # Active MLC with the highest index
+        "highestActiveMLC": maxActiveIndex-1,
+        # Perimeter of the area exposed to the beam
+        "perimeter": perimeter + abs(y12[0] - y12[1])*2,
+        # Perimeter of the area exposed to the beam without accounting for MLC thickness
+        "perimeterNoMLCSize": perimeter,
+        # Area of the area exposed to the beam
+        "area": sum(apertures)*jawSize}
 
     return cm

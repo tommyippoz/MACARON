@@ -52,6 +52,12 @@ class DICOMGroup:
     def get_name(self):
         return self.name
 
+    def get_rtp_object(self):
+        if self.rtp_object is not None:
+            return self.rtp_object.get_object()
+        else:
+            return None
+
     def load_folder(self):
         """
         Loads the DICOMGroup from a folder, initializing all class attributes but dvh
@@ -322,19 +328,27 @@ class DICOMGroup:
             for beam in list(plan_dict["beams"].values()):
 
                 beam_name = "Beam" + str(beam_index)
-                self.plan_custom_metrics[beam_name] = {"Sequence": [], "YLess1CM": 0, "ApertureLess1CM": 0}
+                beam_mu = float(beam['MU'])
+                beam_final_ms_weight = float(beam['FinalCumulativeMetersetWeight'])
+                self.plan_custom_metrics[beam_name] = {"Sequence": [], "YLess1CM": 0, "ApertureLess1CM": 0,
+                                                       "MUtot": beam_mu, "MUweight": beam_final_ms_weight}
 
                 item_index = 0
                 for item in beam["ControlPointSequence"]:
                     item_index += 1
-                    if hasattr(item, "BeamLimitingDevicePositionSequence") and \
-                            (len(item.BeamLimitingDevicePositionSequence) == 3):
-                        x_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
-                        y_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
-                        lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
-                        cm = complexity_indexes(x_data, y_data, lj_arr)
+                    cp_mu = float(item['CumulativeMetersetWeight'].value)
+                    if hasattr(item, "BeamLimitingDevicePositionSequence"):
+                        if len(item.BeamLimitingDevicePositionSequence) == 3:
+                            y_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                            lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
+                        else:
+                            y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
+                            lj_arr = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                        cm = complexity_indexes(y_data, lj_arr)
                         if cm is not None:
                             cm["index"] = item_index
+                            cm["mu_rel"] = cp_mu
+                            cm["mu"] = cp_mu*beam_mu/beam_final_ms_weight
                             if cm["yDiff"] < 1:
                                 self.plan_custom_metrics[beam_name]["YLess1CM"] += 1
                             if cm["avgAperture"] < 1:
@@ -344,6 +358,12 @@ class DICOMGroup:
                         print("Item " + str(item_index) + "of beam " +
                               str(beam_index) + " not properly formatted")
                 beam_index += 1
+
+                # Compute Additional Beam metrics
+                M = 0
+                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
+                    M = M + cp_metrics["mu"]*cp_metrics["perimeter"]/cp_metrics["area"]
+                self.plan_custom_metrics[beam_name]["M"] = M / self.plan_custom_metrics[beam_name]["MUtot"]
 
         else:
             print("Supplied file is not an RT_PLAN")
