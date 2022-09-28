@@ -170,6 +170,16 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         right_old = right
     perimeter += apertures[-1]
 
+    # Computing sum of all apertures (active and non active)
+    ap_sum = 0
+    for i in range(0, int(len(lj_array)/2)):
+        left = lj_array[i]
+        right = lj_array[int(len(lj_array)/2)+i]
+        ap_sum = ap_sum + abs(right - left)
+
+    # Computing LSV
+    # TODO
+
     cm = {
         # Minimum Aperture between aligned MLC
         "minAperture": min(apertures),
@@ -177,8 +187,11 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         "maxAperture": max(apertures),
         # Maximum Aperture between misaligned MLC
         "maxApertureNoAlign": abs(max_right - min_left),
-        # Average Aperture between aligned MLCs
+        # Average Aperture between Active aligned MLCs
         "avgAperture": sum(apertures)/len(apertures),
+        # Sum of all apertures (active and non active)
+        "sumAllApertures": ap_sum,
+        # Size of the window containing active MLCs
         "yDiff": abs(y12[0] - y12[1]),
         # Number of MLCs
         "totalMLC": int(len(lj_array)/2),
@@ -193,6 +206,8 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         # Perimeter of the area exposed to the beam without accounting for MLC thickness
         "perimeterNoMLCSize": perimeter,
         # Area of the area exposed to the beam
-        "area": sum(apertures)*jawSize}
+        "area": sum(apertures)*jawSize,
+        }
 
-    return cm
+    # Complexity measures, left jaws, right jaws
+    return cm,  lj_array[0:int(len(lj_array)/2)], lj_array[int(len(lj_array)/2):]

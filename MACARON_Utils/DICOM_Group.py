@@ -1,5 +1,7 @@
+import copy
 import os
 import SimpleITK
+import numpy
 import pylab
 
 from dicompylercore import dvhcalc
@@ -331,9 +333,11 @@ class DICOMGroup:
                 beam_mu = float(beam['MU'])
                 beam_final_ms_weight = float(beam['FinalCumulativeMetersetWeight'])
                 self.plan_custom_metrics[beam_name] = {"Sequence": [], "YLess1CM": 0, "ApertureLess1CM": 0,
-                                                       "MUtot": beam_mu, "MUweight": beam_final_ms_weight}
+                                                       "MUbeam": beam_mu, "MUfinalweight": beam_final_ms_weight}
 
                 item_index = 0
+                left_jaws = []
+                right_jaws = []
                 for item in beam["ControlPointSequence"]:
                     item_index += 1
                     cp_mu = float(item['CumulativeMetersetWeight'].value)
@@ -344,11 +348,13 @@ class DICOMGroup:
                         else:
                             y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
                             lj_arr = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
-                        cm = complexity_indexes(y_data, lj_arr)
+                        cm, left, right = complexity_indexes(y_data, lj_arr)
+                        left_jaws.append(left)
+                        right_jaws.append(right)
                         if cm is not None:
                             cm["index"] = item_index
-                            cm["mu_rel"] = cp_mu
-                            cm["mu"] = cp_mu*beam_mu/beam_final_ms_weight
+                            cm["MUrel"] = cp_mu
+                            cm["MU"] = cp_mu*beam_mu/beam_final_ms_weight
                             if cm["yDiff"] < 1:
                                 self.plan_custom_metrics[beam_name]["YLess1CM"] += 1
                             if cm["avgAperture"] < 1:
@@ -359,11 +365,46 @@ class DICOMGroup:
                               str(beam_index) + " not properly formatted")
                 beam_index += 1
 
-                # Compute Additional Beam metrics
+                # Compute Additional Beam metrics: M
                 M = 0
                 for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    M = M + cp_metrics["mu"]*cp_metrics["perimeter"]/cp_metrics["area"]
-                self.plan_custom_metrics[beam_name]["M"] = M / self.plan_custom_metrics[beam_name]["MUtot"]
+                    M = M + cp_metrics["MU"]*cp_metrics["perimeter"]/cp_metrics["area"]
+                self.plan_custom_metrics[beam_name]["M"] = M / self.plan_custom_metrics[beam_name]["MUbeam"]
+
+                # Compute Additional CP/Beam metrics: AAV
+                left_jaws = numpy.asarray(left_jaws)
+                right_jaws = numpy.asarray(right_jaws)
+                norm_factor = sum(abs(numpy.max(right_jaws, axis=0) - numpy.min(left_jaws, axis=0)))
+                for i in range(len(self.plan_custom_metrics[beam_name]["Sequence"])):
+                    self.plan_custom_metrics[beam_name]["Sequence"][i]["AAV"] = \
+                        self.plan_custom_metrics[beam_name]["Sequence"][i]["sumAllApertures"] / norm_factor
+
+                # Compute Additional Beam metrics: MCS
+                MCS = 0
+                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
+                    MCS = MCS + cp_metrics["AAV"] * cp_metrics["LSV"] * cp_metrics["MUrel"]
+                self.plan_custom_metrics[beam_name]["MCS"] = MCS
+
+                # Compute Additional Beam metrics: MFC
+                MFC = 0
+                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
+                    MFC = MFC + cp_metrics["area"] * cp_metrics["MUrel"]
+                self.plan_custom_metrics[beam_name]["MFC"] = MFC
+
+            # Computing Plan Metrics
+            beams = copy.deepcopy(list(self.plan_custom_metrics.keys()))
+            self.plan_custom_metrics["plan"] = {}
+
+            MU = 0
+            for beam_name in beams:
+                MU = MU + self.plan_custom_metrics[beam_name]["MUbeam"]
+            self.plan_custom_metrics["plan"]["MUplan"] = MU
+
+            MCS = 0
+            for beam_name in beams:
+                MCS = MCS + self.plan_custom_metrics[beam_name]["MUbeam"]*self.plan_custom_metrics[beam_name]["MCS"]
+            self.plan_custom_metrics["plan"]["MCSplan"] = MCS/MU
+
 
         else:
             print("Supplied file is not an RT_PLAN")
