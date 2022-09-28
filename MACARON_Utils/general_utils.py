@@ -30,7 +30,7 @@ def write_rec_dict(out_f, dict_obj, prequel):
     if (type(dict_obj) is dict) or issubclass(type(dict_obj), dict):
         for key in dict_obj.keys():
             if (type(dict_obj[key]) is dict) or issubclass(type(dict_obj[key]), dict):
-                if len(dict_obj[key]) > 10:
+                if len(dict_obj[key]) > 20:
                     for inner in dict_obj[key].keys():
                         if (prequel is None) or (len(prequel) == 0):
                             out_f.write("%s,%s,%s\n" % (key, inner, dict_obj[key][inner]))
@@ -136,11 +136,14 @@ def complexity_indexes(y12, lj_array, jawSize=5):
             min_left = left
         if right > max_right:
             max_right = right
+    pos_max =  abs(max_right - min_left)
 
     # Computing most of the Metrics
     apertures = []
     left_old = 0
     right_old = 0
+    lsv_l = 0
+    lsv_r = 0
     perimeter = 0
 
     for i in range(minActiveIndex, maxActiveIndex):
@@ -148,7 +151,11 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         left = lj_array[i]
         right = lj_array[int(len(lj_array)/2)+i]
         apertures.append(abs(left - right))
-        # Computing Perimeter and LSV iteratively
+        # Computing LSV iteratively
+        if i < maxActiveIndex:
+            lsv_l = lsv_l + (pos_max - (left - lj_array[i+1]))
+            lsv_r = lsv_r + (pos_max - (right - lj_array[int(len(lj_array)/2)+i+1]))
+        # Computing Perimeter iteratively
         ap_i = i - minActiveIndex
         if i == minActiveIndex:
             perimeter += apertures[ap_i]
@@ -168,7 +175,12 @@ def complexity_indexes(y12, lj_array, jawSize=5):
             perimeter += contrib
         left_old = left
         right_old = right
+
+    # Finalizing Perimeter
     perimeter += apertures[-1]
+
+    # Finalizing LSV
+    lsv = lsv_l*lsv_r/pow(len(apertures)*pos_max, 2)
 
     # Computing sum of all apertures (active and non active)
     ap_sum = 0
@@ -177,16 +189,13 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         right = lj_array[int(len(lj_array)/2)+i]
         ap_sum = ap_sum + abs(right - left)
 
-    # Computing LSV
-    # TODO
-
     cm = {
         # Minimum Aperture between aligned MLC
         "minAperture": min(apertures),
         # Maximum Aperture between aligned MLC
         "maxAperture": max(apertures),
         # Maximum Aperture between misaligned MLC
-        "maxApertureNoAlign": abs(max_right - min_left),
+        "maxApertureNoAlign": pos_max,
         # Average Aperture between Active aligned MLCs
         "avgAperture": sum(apertures)/len(apertures),
         # Sum of all apertures (active and non active)
@@ -207,6 +216,18 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         "perimeterNoMLCSize": perimeter,
         # Area of the area exposed to the beam
         "area": sum(apertures)*jawSize,
+        # LSV metric
+        "LSV": lsv,
+        # Active MLCs which are opened
+        "nAperturesG0": sum(ap > 0 for ap in apertures),
+        # Active MLCs with aperture lower equal than 2
+        "nAperturesLeq2": sum(ap <= 2 for ap in apertures),
+        # Active MLCs with aperture lower equal than 5
+        "nAperturesLeq5": sum(ap <= 5 for ap in apertures),
+        # Active MLCs with aperture lower equal than 10
+        "nAperturesLeq10": sum(ap <= 10 for ap in apertures),
+        # Active MLCs with aperture lower equal than 20
+        "nAperturesLeq20": sum(ap <= 20 for ap in apertures),
         }
 
     # Complexity measures, left jaws, right jaws

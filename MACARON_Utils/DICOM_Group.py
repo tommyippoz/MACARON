@@ -1,4 +1,5 @@
 import copy
+import math
 import os
 import SimpleITK
 import numpy
@@ -259,7 +260,6 @@ class DICOMGroup:
             print("Cannot compute radiomic features for dose: Missing RT_DOSE file")
         return self.radiomics_dose
 
-
     DEFAULT_RTP_METRICS = [
         PyComplexityMetric,
         MeanAreaMetricEstimator,
@@ -332,8 +332,7 @@ class DICOMGroup:
                 beam_name = "Beam" + str(beam_index)
                 beam_mu = float(beam['MU'])
                 beam_final_ms_weight = float(beam['FinalCumulativeMetersetWeight'])
-                self.plan_custom_metrics[beam_name] = {"Sequence": [], "YLess1CM": 0, "ApertureLess1CM": 0,
-                                                       "MUbeam": beam_mu, "MUfinalweight": beam_final_ms_weight}
+                self.plan_custom_metrics[beam_name] = {"Sequence": [], "MUbeam": beam_mu, "MUfinalweight": beam_final_ms_weight}
 
                 item_index = 0
                 left_jaws = []
@@ -354,11 +353,7 @@ class DICOMGroup:
                         if cm is not None:
                             cm["index"] = item_index
                             cm["MUrel"] = cp_mu
-                            cm["MU"] = cp_mu*beam_mu/beam_final_ms_weight
-                            if cm["yDiff"] < 1:
-                                self.plan_custom_metrics[beam_name]["YLess1CM"] += 1
-                            if cm["avgAperture"] < 1:
-                                self.plan_custom_metrics[beam_name]["ApertureLess1CM"] += 1
+                            cm["MU"] = cp_mu * beam_mu / beam_final_ms_weight
                         self.plan_custom_metrics[beam_name]["Sequence"].append(cm)
                     else:
                         print("Item " + str(item_index) + "of beam " +
@@ -368,7 +363,7 @@ class DICOMGroup:
                 # Compute Additional Beam metrics: M
                 M = 0
                 for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    M = M + cp_metrics["MU"]*cp_metrics["perimeter"]/cp_metrics["area"]
+                    M = M + cp_metrics["MU"] * cp_metrics["perimeter"] / cp_metrics["area"]
                 self.plan_custom_metrics[beam_name]["M"] = M / self.plan_custom_metrics[beam_name]["MUbeam"]
 
                 # Compute Additional CP/Beam metrics: AAV
@@ -385,11 +380,35 @@ class DICOMGroup:
                     MCS = MCS + cp_metrics["AAV"] * cp_metrics["LSV"] * cp_metrics["MUrel"]
                 self.plan_custom_metrics[beam_name]["MCS"] = MCS
 
+                # Compute Additional Beam metrics: MCSV
+                MCSV = 0
+                for i in range(len(self.plan_custom_metrics[beam_name]["Sequence"]) - 1):
+                    cpi = self.plan_custom_metrics[beam_name]["Sequence"][i]
+                    cpi1 = self.plan_custom_metrics[beam_name]["Sequence"][i + 1]
+                    MCSV = MCSV + (cpi["AAV"] + cpi1["AAV"]) / 2 * (cpi["LSV"] + cpi1["LSV"]) / 2 * cpi["MUrel"]
+                self.plan_custom_metrics[beam_name]["MCSV"] = MCSV
+
                 # Compute Additional Beam metrics: MFC
                 MFC = 0
                 for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
                     MFC = MFC + cp_metrics["area"] * cp_metrics["MUrel"]
                 self.plan_custom_metrics[beam_name]["MFC"] = MFC
+
+                # Compute Additional Beam metrics: BI
+                BI = 0
+                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
+                    BI = BI + cp_metrics["MUrel"] * (cp_metrics["perimeter"] / (4 * math.pi * cp_metrics["area"]))
+                self.plan_custom_metrics[beam_name]["BI"] = BI
+
+                # Compute Additional Beam metrics: SAS
+                SAS = {"nAperturesLeq2": 0, "nAperturesLeq5": 0, "nAperturesLeq10": 0, "nAperturesLeq20": 0}
+                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
+                    for key in SAS:
+                        SAS[key] = SAS[key] + cp_metrics[key] / cp_metrics["nAperturesG0"] * cp_metrics["MUrel"]
+                self.plan_custom_metrics[beam_name]["SAS2"] = SAS["nAperturesLeq2"]
+                self.plan_custom_metrics[beam_name]["SAS5"] = SAS["nAperturesLeq5"]
+                self.plan_custom_metrics[beam_name]["SAS10"] = SAS["nAperturesLeq10"]
+                self.plan_custom_metrics[beam_name]["SAS20"] = SAS["nAperturesLeq20"]
 
             # Computing Plan Metrics
             beams = copy.deepcopy(list(self.plan_custom_metrics.keys()))
@@ -400,10 +419,30 @@ class DICOMGroup:
                 MU = MU + self.plan_custom_metrics[beam_name]["MUbeam"]
             self.plan_custom_metrics["plan"]["MUplan"] = MU
 
+            M = 0
+            for beam_name in beams:
+                M = M + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["M"]
+            self.plan_custom_metrics["plan"]["Mplan"] = M / MU
+
             MCS = 0
             for beam_name in beams:
-                MCS = MCS + self.plan_custom_metrics[beam_name]["MUbeam"]*self.plan_custom_metrics[beam_name]["MCS"]
-            self.plan_custom_metrics["plan"]["MCSplan"] = MCS/MU
+                MCS = MCS + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MCS"]
+            self.plan_custom_metrics["plan"]["MCSplan"] = MCS / MU
+
+            MCSV = 0
+            for beam_name in beams:
+                MCSV = MCSV + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MCSV"]
+            self.plan_custom_metrics["plan"]["MCSVplan"] = MCSV / MU
+
+            MFC = 0
+            for beam_name in beams:
+                MFC = MFC + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MFC"]
+            self.plan_custom_metrics["plan"]["MFCplan"] = MFC / MU
+
+            PI = 0
+            for beam_name in beams:
+                PI = PI + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["BI"]
+            self.plan_custom_metrics["plan"]["PI"] = PI / MU
 
 
         else:
@@ -464,11 +503,11 @@ class DICOMGroup:
                     elif study is DICOMStudy.CONTROL_POINT_METRICS:
                         self.calculate_RTPlan_custom_metrics()
                         out_file = group_folder + "plan_custom_complexity_metrics.csv"
-                        write_dict(dict_obj=self.plan_custom_metrics, filename=out_file, header="beam,attribute,list_index,metric_name,metric_value")
+                        write_dict(dict_obj=self.plan_custom_metrics, filename=out_file,
+                                   header="beam,attribute,list_index,metric_name,metric_value")
                     else:
                         print("Cannot recognize study '" + study + "' to report about")
             else:
                 print("No valid studies to report. Please input a list containing DICOMStudy objects")
         else:
             print("Folder '" + output_folder + "' does not exist or is not a folder")
-
