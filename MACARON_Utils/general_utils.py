@@ -152,9 +152,9 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         right = lj_array[int(len(lj_array)/2)+i]
         apertures.append(abs(left - right))
         # Computing LSV iteratively
-        if i < maxActiveIndex:
-            lsv_l = lsv_l + (pos_max - (left - lj_array[i+1]))
-            lsv_r = lsv_r + (pos_max - (right - lj_array[int(len(lj_array)/2)+i+1]))
+        if i < maxActiveIndex - 1:
+            lsv_l = lsv_l + (pos_max - abs(left - lj_array[i+1]))
+            lsv_r = lsv_r + (pos_max - abs(right - lj_array[int(len(lj_array)/2)+i+1]))
         # Computing Perimeter iteratively
         ap_i = i - minActiveIndex
         if i == minActiveIndex:
