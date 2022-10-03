@@ -352,8 +352,13 @@ class DICOMGroup:
                         right_jaws.append(right)
                         if cm is not None:
                             cm["index"] = item_index
-                            cm["MUrel"] = cp_mu
-                            cm["MU"] = cp_mu * beam_mu / beam_final_ms_weight
+                            if item_index < len(beam["ControlPointSequence"]):
+                                next_cp_mu = float(beam["ControlPointSequence"][item_index]['CumulativeMetersetWeight'].value)
+                                cm["MU"] = (next_cp_mu - cp_mu)*beam_mu/beam_final_ms_weight
+                            else:
+                                cm["MU"] = 0
+                            cm["MUrel"] = cm["MU"] / beam_mu
+                            cm["MUcumrel"] = cp_mu + cm["MUrel"]
                         self.plan_custom_metrics[beam_name]["Sequence"].append(cm)
                     else:
                         print("Item " + str(item_index) + "of beam " +
@@ -397,7 +402,7 @@ class DICOMGroup:
                 # Compute Additional Beam metrics: BI
                 BI = 0
                 for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    BI = BI + cp_metrics["MUrel"] * (cp_metrics["perimeter"] / (4 * math.pi * cp_metrics["area"]))
+                    BI = BI + cp_metrics["MUrel"] * (math.pow(cp_metrics["perimeter"], 2) / (4 * math.pi * cp_metrics["area"]))
                 self.plan_custom_metrics[beam_name]["BI"] = BI
 
                 # Compute Additional Beam metrics: SAS
