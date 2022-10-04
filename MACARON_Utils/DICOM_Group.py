@@ -42,7 +42,7 @@ class DICOMGroup:
         self.tmp_folder = tmp_folder
         self.rts_object = None
         self.rtd_object = None
-        self.rtp_object = None
+        self.rtp_objects = []
         self.tc_sequence = []
         self.structures = None
         self.dvhs = None
@@ -52,26 +52,27 @@ class DICOMGroup:
         self.plan_metrics = None
         self.plan_custom_metrics = None
 
+    def get_folder(self):
+        return self.folder
+
     def get_name(self):
         return self.name
 
-    def get_rtp_object(self):
-        if self.rtp_object is not None:
-            return self.rtp_object.get_object()
-        else:
-            return None
+    def get_rtp_objects(self):
+        return self.rtp_objects
 
     def load_folder(self):
         """
         Loads the DICOMGroup from a folder, initializing all class attributes but dvh
         """
+        self.rtp_objects = []
         if os.path.exists(os.path.dirname(self.folder)):
             for dicom_file in os.listdir(self.folder):
                 if dicom_file.endswith(("dcm", "DCM", "dicom", "DICOM")):
                     dicom_file = self.folder + "/" + dicom_file
                     f_ob, f_type = load_DICOM(dicom_file)
                     if f_type == DICOMType.RT_PLAN:
-                        self.rtp_object = DICOMObject(dicom_file, f_ob, f_type)
+                        self.rtp_objects.append(DICOMObject(dicom_file, f_ob, f_type))
                         if hasattr(f_ob, "PatientName"):
                             self.name = str(f_ob.PatientName)
                     elif f_type == DICOMType.RT_STRUCT:
@@ -84,7 +85,7 @@ class DICOMGroup:
                         print("Unable to decode file '" + dicom_file + "'")
         else:
             print("Folder '" + self.folder + "' does not exist")
-        return (self.rtp_object is not None) or (self.rts_object is not None) \
+        return (len(self.rtp_objects) > 0) or (self.rts_object is not None) \
                or (self.rtd_object is not None) or (self.tc_sequence is not None and len(self.tc_sequence) > 0)
 
     def get_structures(self):
@@ -102,7 +103,10 @@ class DICOMGroup:
         """
         Extracts patient data from DICOM Group
         """
-        return extractPatientData(self.rtp_object.get_object())
+        if len(self.rtp_objects) > 0:
+            return extractPatientData(self.rtp_objects[0].get_object())
+        else:
+            return None
 
     def get_dose_info(self):
         """
@@ -170,28 +174,34 @@ class DICOMGroup:
         Gets the RT_PLAN from the DICOMGroup
         :return: a dictionary containing the detail of the RT_PLAN, and a supporting string
         """
-        if self.rtp_object is not None:
-            self.plan_details, rt_plan = DICOM_utils.get_plan(self.rtp_object.get_file_name())
-            if hasattr(self.plan_details, "date") and len(self.plan_details["date"]) == 0:
-                self.plan_details["date"] = self.rtp_object.get_object().InstanceCreationDate
-            else:
-                self.plan_details["date"] = "1900-01-01"
-            if hasattr(self.plan_details, "time") and len(self.plan_details["time"]) == 0:
-                self.plan_details["time"] = self.rtp_object.get_object().InstanceCreationTime
-            else:
-                self.plan_details["time"] = 1
-            if hasattr(self.plan_details, "label") and len(self.plan_details["label"]) == 0:
-                self.plan_details["label"] = self.rtp_object.get_object().RTPlanLabel
-            else:
-                self.plan_details["label"] = self.name
-            if hasattr(self.plan_details, "name") and len(self.plan_details["name"]) == 0:
-                self.plan_details["name"] = self.rtp_object.get_object().RTPlanName
-            else:
-                self.plan_details["name"] = self.name
+        if len(self.rtp_objects) > 0:
+            self.plan_details = []
+            rt_plans = []
+            for plan in self.rtp_objects:
+                plan_det, rt_plan = DICOM_utils.get_plan(plan.get_file_name())
+                if hasattr(plan_det, "date") and len(plan_det["date"]) == 0:
+                    plan_det["date"] = plan.get_object().InstanceCreationDate
+                else:
+                    plan_det["date"] = "1900-01-01"
+                if hasattr(plan_det, "time") and len(plan_det["time"]) == 0:
+                    plan_det["time"] = plan.get_object().InstanceCreationTime
+                else:
+                    plan_det["time"] = 1
+                if hasattr(plan_det, "label") and len(plan_det["label"]) == 0:
+                    plan_det["label"] = plan.get_object().RTPlanLabel
+                else:
+                    plan_det["label"] = self.name
+                if hasattr(plan_det, "name") and len(plan_det["name"]) == 0:
+                    plan_det["name"] = plan.get_object().RTPlanName
+                else:
+                    plan_det["name"] = self.name
 
-            return self.plan_details, rt_plan
+                self.plan_details.append(plan_det)
+                rt_plans.append(rt_plan)
+
+            return self.plan_details, rt_plans
         else:
-            return {}, {}
+            return [], []
 
     def calculate_radiomics(self):
         source_nrrd = self.tmp_folder + "/" + self.name + "_ct.nrrd"
@@ -283,175 +293,184 @@ class DICOMGroup:
         if (metrics_list is None) or (type(metrics_list) is not list):
             metrics_list = self.DEFAULT_RTP_METRICS
 
-        self.plan_metrics = {}
-        img_paths = {}
-        plan_info = RTPlan(filename=self.rtp_object.get_file_name())
-        if plan_info is not None:
-            plan_dict = plan_info.get_plan()
-            for metric in metrics_list:
-                unit = self.RTP_METRICS_UNITS[metric]
-                met_obj = metric()
-                plan_metric = met_obj.CalculateForPlan(None, plan_dict)
-                self.plan_metrics[metric.__name__] = [plan_metric, unit]
-                if generate_plots:
-                    for k, beam in plan_dict["beams"].items():
-                        fig, ax = plt.subplots()
-                        cpx_beam_cp = met_obj.CalculateForBeamPerAperture(None, plan_dict, beam)
-                        ax.plot(cpx_beam_cp)
-                        ax.set_xlabel("Control Point")
-                        ax.set_ylabel(f"${unit}$")
-                        txt = f"Patient: {self.name} - {metric.__name__} per control point"
-                        ax.set_title(txt)
-                        if output_folder is not None:
-                            img_path = output_folder + "/" + self.name + "_" + metric.__name__ + ".png"
-                        else:
-                            img_path = self.name + "_" + metric.__name__ + ".png"
-                        fig.savefig(img_path, dpi=fig.dpi)
-                        img_paths[metric.__name__] = img_path
-        else:
-            print("Supplied file is not an RT_PLAN")
+        self.plan_metrics = []
+        img_paths = []
+        if len(self.rtp_objects) > 0:
+            for plan in self.rtp_objects:
+                pm = {}
+                plan_imgs = {}
+                plan_info = RTPlan(filename=plan.get_file_name())
+                if plan_info is not None:
+                    plan_dict = plan_info.get_plan()
+                    for metric in metrics_list:
+                        unit = self.RTP_METRICS_UNITS[metric]
+                        met_obj = metric()
+                        plan_metric = met_obj.CalculateForPlan(None, plan_dict)
+                        pm[metric.__name__] = [plan_metric, unit]
+                        if generate_plots:
+                            for k, beam in plan_dict["beams"].items():
+                                fig, ax = plt.subplots()
+                                cpx_beam_cp = met_obj.CalculateForBeamPerAperture(None, plan_dict, beam)
+                                ax.plot(cpx_beam_cp)
+                                ax.set_xlabel("Control Point")
+                                ax.set_ylabel(f"${unit}$")
+                                txt = f"Patient: {self.name} - {metric.__name__} per control point"
+                                ax.set_title(txt)
+                                if output_folder is not None:
+                                    img_path = output_folder + "/" + self.name + "_" + metric.__name__ + ".png"
+                                else:
+                                    img_path = self.name + "_" + metric.__name__ + ".png"
+                                fig.savefig(img_path, dpi=fig.dpi)
+                                plan_imgs[metric.__name__] = img_path
+                    self.plan_metrics.append(pm)
+                    img_paths.append(plan_imgs)
+                else:
+                    print("Supplied file is not an RT_PLAN")
         return self.plan_metrics, img_paths
 
-    def calculate_RTPlan_custom_metrics(self, generate_plots=True, output_folder=None):
+    def calculate_RTPlan_custom_metrics(self):
         """
         Calculates Complexity indexes from RTPlan
-        :param output_folder: folder to print plots to
-        :param generate_plots: True if plots have to be generated and saved to file
         :return: a dictionary containing the metric value and the unit for each RTPlan metric
         """
-        self.plan_custom_metrics = {}
-        rt_ob = self.rtp_object.get_object()
+        self.plan_custom_metrics = []
 
-        if rt_ob is not None:
+        if len(self.rtp_objects) > 0:
 
-            plan_dict = RTPlan(filename=self.rtp_object.get_file_name()).get_plan()
-            beam_index = 1
+            for plan in self.rtp_objects:
 
-            for beam in list(plan_dict["beams"].values()):
+                rt_ob = plan.get_object()
+                if rt_ob is not None:
 
-                beam_name = "Beam" + str(beam_index)
-                beam_mu = float(beam['MU'])
-                beam_final_ms_weight = float(beam['FinalCumulativeMetersetWeight'])
-                self.plan_custom_metrics[beam_name] = {"Sequence": [], "MUbeam": beam_mu, "MUfinalweight": beam_final_ms_weight}
+                    plan_dict = RTPlan(filename=plan.get_file_name()).get_plan()
+                    beam_index = 1
+                    pcm = {}
 
-                item_index = 0
-                left_jaws = []
-                right_jaws = []
-                for item in beam["ControlPointSequence"]:
-                    item_index += 1
-                    cp_mu = float(item['CumulativeMetersetWeight'].value)
-                    if hasattr(item, "BeamLimitingDevicePositionSequence"):
-                        if len(item.BeamLimitingDevicePositionSequence) == 3:
-                            y_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
-                            lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
-                        else:
-                            y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
-                            lj_arr = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
-                        cm, left, right = complexity_indexes(y_data, lj_arr)
-                        left_jaws.append(left)
-                        right_jaws.append(right)
-                        if cm is not None:
-                            cm["index"] = item_index
-                            if item_index < len(beam["ControlPointSequence"]):
-                                next_cp_mu = float(beam["ControlPointSequence"][item_index]['CumulativeMetersetWeight'].value)
-                                cm["MU"] = (next_cp_mu - cp_mu)*beam_mu/beam_final_ms_weight
+                    for beam in list(plan_dict["beams"].values()):
+
+                        beam_name = "Beam" + str(beam_index)
+                        beam_mu = float(beam['MU'])
+                        beam_final_ms_weight = float(beam['FinalCumulativeMetersetWeight'])
+                        pcm[beam_name] = {"Sequence": [], "MUbeam": beam_mu, "MUfinalweight": beam_final_ms_weight}
+
+                        item_index = 0
+                        left_jaws = []
+                        right_jaws = []
+                        for item in beam["ControlPointSequence"]:
+                            item_index += 1
+                            cp_mu = float(item['CumulativeMetersetWeight'].value)
+                            if hasattr(item, "BeamLimitingDevicePositionSequence"):
+                                if len(item.BeamLimitingDevicePositionSequence) == 3:
+                                    y_data = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                                    lj_arr = item.BeamLimitingDevicePositionSequence[2].LeafJawPositions
+                                else:
+                                    y_data = item.BeamLimitingDevicePositionSequence[0].LeafJawPositions
+                                    lj_arr = item.BeamLimitingDevicePositionSequence[1].LeafJawPositions
+                                cm, left, right = complexity_indexes(y_data, lj_arr)
+                                left_jaws.append(left)
+                                right_jaws.append(right)
+                                if cm is not None:
+                                    cm["index"] = item_index
+                                    if item_index < len(beam["ControlPointSequence"]):
+                                        next_cp_mu = float(beam["ControlPointSequence"][item_index]['CumulativeMetersetWeight'].value)
+                                        cm["MU"] = (next_cp_mu - cp_mu)*beam_mu/beam_final_ms_weight
+                                    else:
+                                        cm["MU"] = 0
+                                    cm["MUrel"] = cm["MU"] / beam_mu
+                                    cm["MUcumrel"] = cp_mu + cm["MUrel"]
+                                pcm[beam_name]["Sequence"].append(cm)
                             else:
-                                cm["MU"] = 0
-                            cm["MUrel"] = cm["MU"] / beam_mu
-                            cm["MUcumrel"] = cp_mu + cm["MUrel"]
-                        self.plan_custom_metrics[beam_name]["Sequence"].append(cm)
-                    else:
-                        print("Item " + str(item_index) + "of beam " +
-                              str(beam_index) + " not properly formatted")
-                beam_index += 1
+                                print("Item " + str(item_index) + "of beam " + str(beam_index) + " not properly formatted")
+                        beam_index += 1
 
-                # Compute Additional Beam metrics: M
-                M = 0
-                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    M = M + cp_metrics["MU"] * cp_metrics["perimeter"] / cp_metrics["area"]
-                self.plan_custom_metrics[beam_name]["M"] = M / self.plan_custom_metrics[beam_name]["MUbeam"]
+                        # Compute Additional Beam metrics: M
+                        M = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            M = M + cp_metrics["MU"] * cp_metrics["perimeter"] / cp_metrics["area"]
+                        pcm[beam_name]["M"] = M / pcm[beam_name]["MUbeam"]
 
-                # Compute Additional CP/Beam metrics: AAV
-                left_jaws = numpy.asarray(left_jaws)
-                right_jaws = numpy.asarray(right_jaws)
-                norm_factor = sum(abs(numpy.max(right_jaws, axis=0) - numpy.min(left_jaws, axis=0)))
-                for i in range(len(self.plan_custom_metrics[beam_name]["Sequence"])):
-                    self.plan_custom_metrics[beam_name]["Sequence"][i]["AAV"] = \
-                        self.plan_custom_metrics[beam_name]["Sequence"][i]["sumAllApertures"] / norm_factor
+                        # Compute Additional CP/Beam metrics: AAV
+                        left_jaws = numpy.asarray(left_jaws)
+                        right_jaws = numpy.asarray(right_jaws)
+                        norm_factor = sum(abs(numpy.max(right_jaws, axis=0) - numpy.min(left_jaws, axis=0)))
+                        for i in range(len(pcm[beam_name]["Sequence"])):
+                            pcm[beam_name]["Sequence"][i]["AAV"] = \
+                                pcm[beam_name]["Sequence"][i]["sumAllApertures"] / norm_factor
 
-                # Compute Additional Beam metrics: MCS
-                MCS = 0
-                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    MCS = MCS + cp_metrics["AAV"] * cp_metrics["LSV"] * cp_metrics["MUrel"]
-                self.plan_custom_metrics[beam_name]["MCS"] = MCS
+                        # Compute Additional Beam metrics: MCS
+                        MCS = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            MCS = MCS + cp_metrics["AAV"] * cp_metrics["LSV"] * cp_metrics["MUrel"]
+                        pcm[beam_name]["MCS"] = MCS
 
-                # Compute Additional Beam metrics: MCSV
-                MCSV = 0
-                for i in range(len(self.plan_custom_metrics[beam_name]["Sequence"]) - 1):
-                    cpi = self.plan_custom_metrics[beam_name]["Sequence"][i]
-                    cpi1 = self.plan_custom_metrics[beam_name]["Sequence"][i + 1]
-                    MCSV = MCSV + (cpi["AAV"] + cpi1["AAV"]) / 2 * (cpi["LSV"] + cpi1["LSV"]) / 2 * cpi["MUrel"]
-                self.plan_custom_metrics[beam_name]["MCSV"] = MCSV
+                        # Compute Additional Beam metrics: MCSV
+                        MCSV = 0
+                        for i in range(len(pcm[beam_name]["Sequence"]) - 1):
+                            cpi = pcm[beam_name]["Sequence"][i]
+                            cpi1 = pcm[beam_name]["Sequence"][i + 1]
+                            MCSV = MCSV + (cpi["AAV"] + cpi1["AAV"]) / 2 * (cpi["LSV"] + cpi1["LSV"]) / 2 * cpi["MUrel"]
+                        pcm[beam_name]["MCSV"] = MCSV
 
-                # Compute Additional Beam metrics: MFC
-                MFC = 0
-                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    MFC = MFC + cp_metrics["area"] * cp_metrics["MUrel"]
-                self.plan_custom_metrics[beam_name]["MFC"] = MFC
+                        # Compute Additional Beam metrics: MFC
+                        MFC = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            MFC = MFC + cp_metrics["area"] * cp_metrics["MUrel"]
+                        pcm[beam_name]["MFC"] = MFC
 
-                # Compute Additional Beam metrics: BI
-                BI = 0
-                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    BI = BI + cp_metrics["MUrel"] * (math.pow(cp_metrics["perimeter"], 2) / (4 * math.pi * cp_metrics["area"]))
-                self.plan_custom_metrics[beam_name]["BI"] = BI
+                        # Compute Additional Beam metrics: BI
+                        BI = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            BI = BI + cp_metrics["MUrel"] * (math.pow(cp_metrics["perimeter"], 2) / (4 * math.pi * cp_metrics["area"]))
+                        pcm[beam_name]["BI"] = BI
 
-                # Compute Additional Beam metrics: SAS
-                SAS = {"nAperturesLeq2": 0, "nAperturesLeq5": 0, "nAperturesLeq10": 0, "nAperturesLeq20": 0}
-                for cp_metrics in self.plan_custom_metrics[beam_name]["Sequence"]:
-                    for key in SAS:
-                        SAS[key] = SAS[key] + cp_metrics[key] / cp_metrics["nAperturesG0"] * cp_metrics["MUrel"]
-                self.plan_custom_metrics[beam_name]["SAS2"] = SAS["nAperturesLeq2"]
-                self.plan_custom_metrics[beam_name]["SAS5"] = SAS["nAperturesLeq5"]
-                self.plan_custom_metrics[beam_name]["SAS10"] = SAS["nAperturesLeq10"]
-                self.plan_custom_metrics[beam_name]["SAS20"] = SAS["nAperturesLeq20"]
+                        # Compute Additional Beam metrics: SAS
+                        SAS = {"nAperturesLeq2": 0, "nAperturesLeq5": 0, "nAperturesLeq10": 0, "nAperturesLeq20": 0}
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            for key in SAS:
+                                SAS[key] = SAS[key] + cp_metrics[key] / cp_metrics["nAperturesG0"] * cp_metrics["MUrel"]
+                        pcm[beam_name]["SAS2"] = SAS["nAperturesLeq2"]
+                        pcm[beam_name]["SAS5"] = SAS["nAperturesLeq5"]
+                        pcm[beam_name]["SAS10"] = SAS["nAperturesLeq10"]
+                        pcm[beam_name]["SAS20"] = SAS["nAperturesLeq20"]
 
-            # Computing Plan Metrics
-            beams = copy.deepcopy(list(self.plan_custom_metrics.keys()))
-            self.plan_custom_metrics["plan"] = {}
+                    # Computing Plan Metrics
+                    beams = copy.deepcopy(list(pcm.keys()))
+                    pcm["plan"] = {}
 
-            MU = 0
-            for beam_name in beams:
-                MU = MU + self.plan_custom_metrics[beam_name]["MUbeam"]
-            self.plan_custom_metrics["plan"]["MUplan"] = MU
+                    MU = 0
+                    for beam_name in beams:
+                        MU = MU + pcm[beam_name]["MUbeam"]
+                    pcm["plan"]["MUplan"] = MU
 
-            M = 0
-            for beam_name in beams:
-                M = M + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["M"]
-            self.plan_custom_metrics["plan"]["Mplan"] = M / MU
+                    M = 0
+                    for beam_name in beams:
+                        M = M + pcm[beam_name]["MUbeam"] * pcm[beam_name]["M"]
+                    pcm["plan"]["Mplan"] = M / MU
 
-            MCS = 0
-            for beam_name in beams:
-                MCS = MCS + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MCS"]
-            self.plan_custom_metrics["plan"]["MCSplan"] = MCS / MU
+                    MCS = 0
+                    for beam_name in beams:
+                        MCS = MCS + pcm[beam_name]["MUbeam"] * pcm[beam_name]["MCS"]
+                    pcm["plan"]["MCSplan"] = MCS / MU
 
-            MCSV = 0
-            for beam_name in beams:
-                MCSV = MCSV + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MCSV"]
-            self.plan_custom_metrics["plan"]["MCSVplan"] = MCSV / MU
+                    MCSV = 0
+                    for beam_name in beams:
+                        MCSV = MCSV + pcm[beam_name]["MUbeam"] * pcm[beam_name]["MCSV"]
+                    pcm["plan"]["MCSVplan"] = MCSV / MU
 
-            MFC = 0
-            for beam_name in beams:
-                MFC = MFC + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["MFC"]
-            self.plan_custom_metrics["plan"]["MFCplan"] = MFC / MU
+                    MFC = 0
+                    for beam_name in beams:
+                        MFC = MFC + pcm[beam_name]["MUbeam"] * pcm[beam_name]["MFC"]
+                    pcm["plan"]["MFCplan"] = MFC / MU
 
-            PI = 0
-            for beam_name in beams:
-                PI = PI + self.plan_custom_metrics[beam_name]["MUbeam"] * self.plan_custom_metrics[beam_name]["BI"]
-            self.plan_custom_metrics["plan"]["PI"] = PI / MU
+                    PI = 0
+                    for beam_name in beams:
+                        PI = PI + pcm[beam_name]["MUbeam"] * pcm[beam_name]["BI"]
+                    pcm["plan"]["PI"] = PI / MU
 
+                    self.plan_custom_metrics.append(pcm)
 
-        else:
-            print("Supplied file is not an RT_PLAN")
+                else:
+                    print("Supplied file is not an RT_PLAN")
         return self.plan_custom_metrics
 
     def report(self, studies, output_folder, clean_folder=True):
@@ -507,9 +526,10 @@ class DICOMGroup:
                                        filename=out_file, header="attribute,value")
                     elif study is DICOMStudy.CONTROL_POINT_METRICS:
                         self.calculate_RTPlan_custom_metrics()
-                        out_file = group_folder + "plan_custom_complexity_metrics.csv"
-                        write_dict(dict_obj=self.plan_custom_metrics, filename=out_file,
-                                   header="beam,attribute,list_index,metric_name,metric_value")
+                        for i in range(0, len(self.plan_custom_metrics)):
+                            out_file = group_folder + "plan_custom_complexity_metrics_" + str(i) + ".csv"
+                            write_dict(dict_obj=self.plan_custom_metrics[i], filename=out_file,
+                                       header="beam,attribute,list_index,metric_name,metric_value")
                     else:
                         print("Cannot recognize study '" + study + "' to report about")
             else:

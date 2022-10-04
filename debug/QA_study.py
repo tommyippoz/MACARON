@@ -7,7 +7,7 @@ from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
-MAIN_FOLDER = "../DICOM_Files/DicomAnonymized"
+MAIN_FOLDER = "../DICOM_Files/DicomAnonymized/Patient3"
 TMP_FOLDER = "tmp"
 OUTPUT_FOLDER = "output"
 
@@ -37,6 +37,7 @@ def rec_find_DICOM_groups(main_folder, tmp_folder, groups):
             rec_find_DICOM_groups(subfolder_path, tmp_folder, groups)
     return groups
 
+
 if __name__ == "__main__":
 
     # Load configuration parameters
@@ -59,25 +60,21 @@ if __name__ == "__main__":
 
         for group in groups:
 
-            obs = group.get_rtp_objects()
-            #DB_Manager.store_all(group, config["database"]["username"], config["database"]["password"], OUTPUT_FOLDER)
-            # #
-            # # # Getting structures for the patient
-            # cm = group.calculate_RTPlan_custom_metrics()
-            # structures = group.get_structures()
-            # # Getting treatment Plan
-            # plan, rt_plan = dg.get_plan()
-            # #
-            # # Generate DVH
-            # dvhs, figure_dvh =  group.generate_DVH()
-            # # # Calculating radiomic features
-            # radiomic_features = group.calculate_radiomics()
-            #dose_radiomics = group.calculate_dose_radiomics()
-            # #
-            # # # Calculating RTPlan metrics
-            # rtp_metrics = group.calculate_RTPlan_metrics(output_folder=OUTPUT_FOLDER)
-            group.report(studies=[DICOMStudy.CONTROL_POINT_METRICS], output_folder=OUTPUT_FOLDER)
-            print("THE END")
+            print("Analyzing Patient " + group.get_name())
+
+            cm_list = group.calculate_RTPlan_custom_metrics()
+
+            group_folder = OUTPUT_FOLDER + "/" + group.get_folder() + "/"
+            if os.path.exists(group_folder):
+                print("Deleting existing info inside '" + group_folder + "' folder")
+                clear_folder(group_folder)
+            else:
+                os.makedirs(group_folder)
+
+            for i in range(0, len(cm_list)):
+                out_file = group_folder + "plan_custom_complexity_metrics_" + str(i) + ".csv"
+                write_dict(dict_obj=cm_list[i], filename=out_file,
+                           header="beam,attribute,list_index,metric_name,metric_value")
 
     else:
         print("Folder '" + MAIN_FOLDER + "' does not exist or it is not a folder")

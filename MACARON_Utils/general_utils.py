@@ -151,7 +151,7 @@ def complexity_indexes(y12, lj_array, jawSize=5):
         left = lj_array[i]
         right = lj_array[int(len(lj_array)/2)+i]
         apertures.append(abs(left - right))
-        # Computing LSV iteratively
+        # Computing LSV iteratively (avoiding the last active control point)
         if i < maxActiveIndex - 1:
             lsv_l = lsv_l + (pos_max - abs(left - lj_array[i+1]))
             lsv_r = lsv_r + (pos_max - abs(right - lj_array[int(len(lj_array)/2)+i+1]))
