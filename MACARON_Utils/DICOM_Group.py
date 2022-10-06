@@ -14,7 +14,7 @@ from MACARON_Utils.DICOMObject import DICOMObject
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.DICOM_utils import load_DICOM, build_DVH_info, extractPatientData
 from MACARON_Utils.general_utils import create_masks_NRRD, write_dict, clear_folder, create_CT_NRRD, complexity_indexes, \
-    create_mask_NRRD, test_NRRD
+    create_mask_NRRD, test_NRRD, compute_metrics_stat
 
 import matplotlib.pyplot as plt
 
@@ -466,6 +466,9 @@ class DICOMGroup:
                     for beam_name in beams:
                         PI = PI + pcm[beam_name]["MUbeam"] * pcm[beam_name]["BI"]
                     pcm["plan"]["PI"] = PI / MU
+
+                    metrics_stat = compute_metrics_stat(pcm, beams)
+                    pcm["plan"].update(metrics_stat)
 
                     self.plan_custom_metrics.append(pcm)
 

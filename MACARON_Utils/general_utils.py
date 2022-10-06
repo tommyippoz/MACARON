@@ -232,3 +232,20 @@ def complexity_indexes(y12, lj_array, jawSize=5):
 
     # Complexity measures, left jaws, right jaws
     return cm,  lj_array[0:int(len(lj_array)/2)], lj_array[int(len(lj_array)/2):]
+
+
+def compute_metrics_stat(pcm, beams):
+    cm_array = []
+    for beam in beams:
+        cm_array.extend(pcm[beam]["Sequence"])
+    ms = {}
+    for key in list(cm_array[0].keys()):
+        num_list = []
+        for cm in cm_array:
+            num_list.append(cm[key])
+        ms[key + "_avg"] = numpy.average(num_list)
+        ms[key + "_std"] = numpy.std(num_list)
+        ms[key + "_max"] = numpy.max(num_list)
+        ms[key + "_min"] = numpy.min(num_list)
+        ms[key + "_med"] = numpy.median(num_list)
+    return ms
