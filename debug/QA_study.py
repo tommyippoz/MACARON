@@ -1,13 +1,16 @@
 import configparser
 import os.path
 
+import numpy
+import pandas
+
 from MACARON_Utils.DICOM_Group import DICOMGroup
 from MACARON_Utils.DICOM_Study import DICOMStudy
 from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
-MAIN_FOLDER = "../DICOM_Files/DicomAnonymized/Patient3"
+MAIN_FOLDER = "../DICOM_Files/DicomAnonymized_RED"
 TMP_FOLDER = "tmp"
 OUTPUT_FOLDER = "output"
 
@@ -57,24 +60,39 @@ if __name__ == "__main__":
     if os.path.exists(MAIN_FOLDER) and os.path.isdir(MAIN_FOLDER):
 
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
+        df = None
 
         for group in groups:
 
             print("Analyzing Patient " + group.get_name())
 
-            cm_list = group.calculate_RTPlan_custom_metrics()
+            cms = group.calculate_RTPlan_custom_metrics()
+            i = 0
 
-            group_folder = OUTPUT_FOLDER + "/" + group.get_folder() + "/"
-            if os.path.exists(group_folder):
-                print("Deleting existing info inside '" + group_folder + "' folder")
-                clear_folder(group_folder)
-            else:
-                os.makedirs(group_folder)
+            for cm in cms:
+                pm = cm["plan"]
+                pm["patient"] = group.get_name() + "_" + str(i)
+                i = i + 1
+                if df is None:
+                    df = pandas.DataFrame(columns=list(pm.keys()))
+                df = df.append(pm, ignore_index=True)
 
-            for i in range(0, len(cm_list)):
-                out_file = group_folder + "plan_custom_complexity_metrics_" + str(i) + ".csv"
-                write_dict(dict_obj=cm_list[i], filename=out_file,
-                           header="beam,attribute,list_index,metric_name,metric_value")
+            # if "/" in group.get_folder():
+            #     group_folder = OUTPUT_FOLDER + "/" + group.get_folder().split("/")[-1] + "/"
+            # else:
+            #     group_folder = OUTPUT_FOLDER + "/" + group.get_folder() + "/"
+            # if os.path.exists(group_folder):
+            #     print("Deleting existing info inside '" + group_folder + "' folder")
+            #     clear_folder(group_folder)
+            # else:
+            #     os.makedirs(group_folder)
+            #
+            # for i in range(0, len(cm_list)):
+            #     out_file = group_folder + "plan_custom_complexity_metrics_" + str(i) + ".csv"
+            #     write_dict(dict_obj=cm_list[i], filename=out_file,
+            #                header="beam,attribute,list_index,metric_name,metric_value")
+
+        df.to_csv(OUTPUT_FOLDER + "/foo.csv", index=False)
 
     else:
         print("Folder '" + MAIN_FOLDER + "' does not exist or it is not a folder")
