@@ -61,7 +61,9 @@ if __name__ == "__main__":
 
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
         df = None
+        apertures = {}
 
+        # Iterate over patients
         for group in groups:
 
             print("Analyzing Patient " + group.get_name())
@@ -69,7 +71,10 @@ if __name__ == "__main__":
             cms = group.calculate_RTPlan_custom_metrics()
             i = 0
 
+            # Iterate Over RTPlans for Patients
             for cm in cms:
+
+                # Plan Metrics Summary
                 pm = cm["plan"]
                 pm["patient"] = group.get_name() + "_" + str(i)
                 i = i + 1
@@ -77,22 +82,21 @@ if __name__ == "__main__":
                     df = pandas.DataFrame(columns=list(pm.keys()))
                 df = df.append(pm, ignore_index=True)
 
-            # if "/" in group.get_folder():
-            #     group_folder = OUTPUT_FOLDER + "/" + group.get_folder().split("/")[-1] + "/"
-            # else:
-            #     group_folder = OUTPUT_FOLDER + "/" + group.get_folder() + "/"
-            # if os.path.exists(group_folder):
-            #     print("Deleting existing info inside '" + group_folder + "' folder")
-            #     clear_folder(group_folder)
-            # else:
-            #     os.makedirs(group_folder)
-            #
-            # for i in range(0, len(cm_list)):
-            #     out_file = group_folder + "plan_custom_complexity_metrics_" + str(i) + ".csv"
-            #     write_dict(dict_obj=cm_list[i], filename=out_file,
-            #                header="beam,attribute,list_index,metric_name,metric_value")
+                # Aperture Summary
+                aperture_dict = {"avgApertures": [], "yDiff": []}
+                for item in cm.keys():
+                    if item is not "plan":
+                        seq = cm[item]["Sequence"]
+                        for cp in seq:
+                            aperture_dict["avgApertures"].append(cp["avgAperture"])
+                            aperture_dict["yDiff"].append(cp["yDiff"])
+                apertures[pm["patient"]] = aperture_dict
 
-        df.to_csv(OUTPUT_FOLDER + "/foo.csv", index=False)
+        # Prints Summary of Plan Metrics
+        df.to_csv(OUTPUT_FOLDER + "/plan_metrics_summary.csv", index=False)
+
+        # Prints lists of avgApertures and yDiff
+        write_dict(apertures, OUTPUT_FOLDER + "/apertures.csv", header="patient,metric,value")
 
     else:
         print("Folder '" + MAIN_FOLDER + "' does not exist or it is not a folder")

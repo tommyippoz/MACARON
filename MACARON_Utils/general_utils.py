@@ -51,6 +51,15 @@ def write_rec_dict(out_f, dict_obj, prequel):
                     out_f.write("%s,%s\n" % (key, dict_obj[key]))
                 else:
                     out_f.write("%s,%s,%s\n" % (prequel, key, dict_obj[key]))
+    elif type(dict_obj) is list:
+        item_count = 1
+        for item in dict_obj:
+            if (prequel is not None) and (len(prequel) > 0):
+                new_prequel = prequel + ",item" + str(item_count)
+            else:
+                new_prequel = prequel
+            write_rec_dict(out_f, item, new_prequel)
+            item_count += 1
     else:
         if (prequel is None) or (len(prequel) == 0):
             out_f.write("%s\n" % dict_obj)

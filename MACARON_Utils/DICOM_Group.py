@@ -423,6 +423,20 @@ class DICOMGroup:
                             BI = BI + cp_metrics["MUrel"] * (math.pow(cp_metrics["perimeter"], 2) / (4 * math.pi * cp_metrics["area"]))
                         pcm[beam_name]["BI"] = BI
 
+                        # Compute Additional Beam metrics: average aperture less than 10mm / 1cm
+                        aal10 = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            if cp_metrics["avgAperture"] <= 10:
+                                aal10 = aal10 + 1
+                        pcm[beam_name]["avgApertureLessThan1cm"] = aal10
+
+                        # Compute Additional Beam metrics: average aperture less than 10mm / 1cm
+                        ydl10 = 0
+                        for cp_metrics in pcm[beam_name]["Sequence"]:
+                            if cp_metrics["yDiff"] <= 10:
+                                ydl10 = ydl10 + 1
+                        pcm[beam_name]["yDiffLessThan1cm"] = ydl10
+
                         # Compute Additional Beam metrics: SAS
                         SAS = {"nAperturesLeq2": 0, "nAperturesLeq5": 0, "nAperturesLeq10": 0, "nAperturesLeq20": 0}
                         for cp_metrics in pcm[beam_name]["Sequence"]:
@@ -467,8 +481,24 @@ class DICOMGroup:
                         PI = PI + pcm[beam_name]["MUbeam"] * pcm[beam_name]["BI"]
                     pcm["plan"]["PI"] = PI / MU
 
-                    metrics_stat = compute_metrics_stat(pcm, beams)
-                    pcm["plan"].update(metrics_stat)
+                    nCP = 0
+                    for beam_name in beams:
+                        nCP = nCP + len(pcm[beam_name]["Sequence"])
+                    pcm["plan"]["nCP"] = nCP
+
+                    al10 = 0
+                    for beam_name in beams:
+                        al10 = al10 + pcm[beam_name]["avgApertureLessThan1cm"]
+                    pcm["plan"]["avgApertureLessThan1cm"] = al10
+
+                    yl10 = 0
+                    for beam_name in beams:
+                        yl10 = yl10 + pcm[beam_name]["yDiffLessThan1cm"]
+                    pcm["plan"]["yDiffLessThan1cm"] = yl10
+
+                    # Computing statistical indexes of plan metrics
+                    # metrics_stat = compute_metrics_stat(pcm, beams)
+                    # pcm["plan"].update(metrics_stat)
 
                     self.plan_custom_metrics.append(pcm)
 
