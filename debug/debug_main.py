@@ -7,7 +7,7 @@ from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
-MAIN_FOLDER = "../DICOM_Files/DicomAnonymized/Patient2"
+MAIN_FOLDER = "../DICOM_Files/DicomAnonymized_test/Patient91"
 TMP_FOLDER = "tmp"
 OUTPUT_FOLDER = "output"
 

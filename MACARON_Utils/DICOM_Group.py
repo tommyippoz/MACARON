@@ -51,6 +51,8 @@ class DICOMGroup:
         self.plan_details = None
         self.plan_metrics = None
         self.plan_custom_metrics = None
+        self.isodose_file = None
+        self.radiomics_isodose = None
 
     def get_folder(self):
         return self.folder
@@ -83,6 +85,8 @@ class DICOMGroup:
                         self.tc_sequence.append(DICOMObject(dicom_file, f_ob, f_type))
                     else:
                         print("Unable to decode file '" + dicom_file + "'")
+                elif dicom_file.endswith(("nrrd", "NRRD")):
+                    self.isodose_file =  self.folder + "/" + dicom_file
         else:
             print("Folder '" + self.folder + "' does not exist")
         return (len(self.rtp_objects) > 0) or (self.rts_object is not None) \

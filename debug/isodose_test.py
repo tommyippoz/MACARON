@@ -10,7 +10,7 @@ from MACARON_Utils.general_utils import clear_folder, write_dict
 
 from database import DB_Manager
 
-MAIN_FOLDER = "../DICOM_Files/missing"
+MAIN_FOLDER = "../DICOM_Files/isodosi"
 TMP_FOLDER = "tmp"
 OUTPUT_FOLDER = "output"
 
@@ -60,43 +60,10 @@ if __name__ == "__main__":
     if os.path.exists(MAIN_FOLDER) and os.path.isdir(MAIN_FOLDER):
 
         groups = find_DICOM_groups(MAIN_FOLDER, TMP_FOLDER)
-        df = None
-        apertures = {}
-
-        # Iterate over patients
         for group in groups:
+            rtd_file = group.compute_isodose_features()
+        df = None
 
-            print("Analyzing Patient " + group.get_name())
-
-            cms = group.calculate_RTPlan_custom_metrics()
-            i = 0
-
-            # Iterate Over RTPlans for Patients
-            for cm in cms:
-
-                # Plan Metrics Summary
-                pm = cm["plan"]
-                pm["patient"] = group.get_name() + "_" + str(i)
-                i = i + 1
-                if df is None:
-                    df = pandas.DataFrame(columns=list(pm.keys()))
-                df = df.append(pm, ignore_index=True)
-
-                # Aperture Summary
-                aperture_dict = {"avgApertures": [], "yDiff": []}
-                for item in cm.keys():
-                    if item is not "plan":
-                        seq = cm[item]["Sequence"]
-                        for cp in seq:
-                            aperture_dict["avgApertures"].append(cp["avgAperture"])
-                            aperture_dict["yDiff"].append(cp["yDiff"])
-                apertures[pm["patient"]] = aperture_dict
-
-        # Prints Summary of Plan Metrics
-        df.to_csv(OUTPUT_FOLDER + "/plan_metrics_summary.csv", index=False)
-
-        # Prints lists of avgApertures and yDiff
-        write_dict(apertures, OUTPUT_FOLDER + "/apertures.csv", header="patient,metric,value")
 
     else:
         print("Folder '" + MAIN_FOLDER + "' does not exist or it is not a folder")
